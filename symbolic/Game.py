@@ -187,9 +187,9 @@ class MiniGame:
         surf: pg.Surface = self.player._create_surface()
         surfcolored = surf.copy()
         surfcolored.fill(color)
-        surfcolored.set_alpha(alpha)
-        surfcolored.blit(surf, (0, 0))
-        self.tmp_screen.blit(surfcolored, self.player.rect)
+        surfcolored.set_alpha(128)
+        surf.blit(surfcolored, (0, 0))
+        self.tmp_screen.blit(surf, self.player.rect)
         pg.transform.scale(
             self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen)
         self.tmp_full_screen.set_alpha(alpha)
@@ -201,27 +201,31 @@ class MiniGame:
         self.tmp_full_screen.fill((0, 0, 0, 0))
         self.tmp_full_screen.set_colorkey((0, 0, 0))
 
-        _xs_min = min(start[0], end[0])
-        _xs_max = max(start[0], end[0])
-        xs = np.arange(_xs_min, _xs_max+1, 1)
-        _ys_min = min(start[1], end[1])
-        _ys_max = max(start[1], end[1])
-        ys = np.arange(_ys_min, _ys_max+1, 1)
+        # _xs_min = min(start[0], end[0])
+        # _xs_max = max(start[0], end[0])
+        # xs = np.arange(_xs_min, _xs_max+1, 1)
+        # _ys_min = min(start[1], end[1])
+        # _ys_max = max(start[1], end[1])
+        # ys = np.arange(_ys_min, _ys_max+1, 1)
 
-        # print(_ys)
-        if len(xs) > len(ys):
-            ys = np.interp(xs, [_xs_min, _xs_max], [_ys_min, _ys_max])
-        else:
-            xs = np.interp(ys, [_ys_min, _ys_max], [_xs_min, _xs_max])
-            # ys = np.interp(_ys, start[1], end[1])
-        points = np.transpose([xs, ys])
+        # # print(_ys)
+        # if len(xs) > len(ys):
+        #     ys = np.interp(xs, [_xs_min, _xs_max], [_ys_min, _ys_max])
+        # else:
+        #     xs = np.interp(ys, [_ys_min, _ys_max], [_xs_min, _xs_max])
+        #     # ys = np.interp(_ys, start[1], end[1])
+        # points = np.transpose([xs, ys])
+        points = np.linspace(start, end, 50)
 
         colors = np.linspace(start_color, end_color, len(points))
 
         for i in range(len(points)-1):
-            pg.draw.aaline(self.tmp_screen, colors[i], points[i], points[i+1])
+            pg.draw.line(self.tmp_screen, colors[i], points[i], points[i+1])
         pg.transform.scale(
             self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen)
         self.tmp_full_screen.set_alpha(alpha)
         self.screen.blit(self.tmp_full_screen, (0, 0))
         pg.display.update()
+
+    def destroy(self):
+        pg.display.quit()

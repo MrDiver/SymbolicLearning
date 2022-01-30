@@ -47,10 +47,10 @@ class Option:
         self.transitions.append(OptionTransition(start, dest))
 
     def effect(self) -> LowLevelStates:
-        return np.unique(self.effect_set, axis=0)
+        return np.array(self.effect_set)
 
     def initiation(self) -> LowLevelStates:
-        return np.unique(self.initiation_set, axis=0)
+        return np.array(self.initiation_set)
 
     def execute(self, state: LowLevelState,
                 update_callback: Callable[[LowLevelState], None]) -> OptionExecuteReturn:
@@ -67,6 +67,46 @@ class Option:
         self._add_transition(start_state, state)
 
         return OptionExecuteReturn(state, True, time.time()-start_time)
+
+
+class SubgoalOption(Option):
+    def __init__(self, index, option, initiation_set, effect_set):
+        super().__init__(str(index)+"("+option.name+")", option.policy,
+                         option.init_test, option.termination)
+        self.index = index
+        self.option = option
+        for start, dest in zip(initiation_set, effect_set):
+            self._add_transition(start, dest)
+
+
+def partition_options(option: Option) -> List[SubgoalOption]:
+    import matplotlib.pyplot as plt
+    from sklearn.cluster import DBSCAN
+    from sklearn.preprocessing import StandardScaler
+    subgoals: List[SubgoalOption] = []
+
+    db = DBSCAN(eps=0.1, min_samples=1).fit(
+        StandardScaler().fit_transform(option.effect_set))
+    core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+    core_samples_mask[db.core_sample_indices_] = True
+    labels = db.labels_
+    n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
+    n_noise_ = list(labels).count(-1)
+
+    unique_labels = set(labels)
+    colors = [plt.cm.Spectral(each)
+              for each in np.linspace(0, 1, len(unique_labels))]
+
+    print("Partitioned", option.name, "into", n_clusters_, "clusters")
+    for k in unique_labels:
+
+        class_member_mask = labels == k
+
+        eff_sub = option.effect()[class_member_mask & core_samples_mask]
+        init_sub = option.initiation()[class_member_mask & core_samples_mask]
+        subgoals.append(SubgoalOption(k, option, init_sub, eff_sub))
+
+    return subgoals
 
 
 class PropositionSymbol:
@@ -147,15 +187,15 @@ class Playroom:
     def draw_background(self):
         self.game.draw_background()
 
-    def overlay_state(self, s: LowLevelState, color=(255, 0, 0)):
+    def overlay_state(self, s: LowLevelState, color=(255, 0, 0), alpha=10):
         old_state = self.get_state()
         self.set_state(s)
-        self.game.overlay(color, 128)
+        self.game.overlay(color, alpha)
         self.set_state(old_state)
 
-    def overlay_transition(self, start: LowLevelState, end: LowLevelState, start_color=(255, 0, 0), end_color=(0, 255, 0)):
+    def overlay_transition(self, start: LowLevelState, end: LowLevelState, start_color=(255, 0, 0), end_color=(0, 255, 0), alpha=10):
         self.game.overlay_transition(
-            (start[0], start[1]), (end[0], end[1]), start_color, end_color, 50)
+            (start[0], start[1]), (end[0], end[1]), start_color, end_color, alpha)
 
 
 class Agent:
@@ -211,28 +251,101 @@ def main():
     game = pr.game
     agent: Agent = PlayroomAgent(pr, game.player)
     state = pr.get_state()
-    for i in range(500):
-        res: OptionExecuteReturn = agent.options[
-            rng.randint(0, 3)].execute(
-            state, (lambda s: None))
-        # print(pr.get_state(), res.state, res.time)
-        state = res.state
-        pr.draw_state(state)
-        # state = res.state
-        # print(pr.get_state())
-        # time.sleep(0.0001)
-    pr.draw_background()
-    for i in range(4):
-        print(agent.options[i].name)
-        init = agent.options[i].initiation()
-        eff = agent.options[i].effect()
-        for s in init:
-            pr.overlay_state(s, (0, 255, 0))
-        for s in eff:
-            pr.overlay_state(s, (255, 0, 0))
-        for e in agent.options[i].transitions:
-            pr.overlay_transition(e.start, e.dest, (255, 0, 0), (0, 255, 0))
-    input()
+
+    def recurse_options(state: LowLevelState, options: List[Option], depth: int):
+        if depth <= 0:
+            return
+        for o in options:
+            res = o.execute(state, (lambda s: None))
+            if res.executed:
+                recurse_options(res.state, options, depth-1)
+            # pr.draw_state(res.state)
+
+    def random_options(state: LowLevelState, options: List[Option], depth: int):
+        i = 0
+        while i < depth:
+            res = options[rng.randint(0, len(options)-1)
+                          ].execute(state, (lambda s: None))
+            # pr.draw_state(res.state)
+            state = res.state
+            i += 1
+
+    random_options(state, agent.options, 1000)
+    # pr.draw_background()
+    # for i in range(4):
+    #     print(agent.options[i].name)
+    #     init = agent.options[i].initiation()
+    #     eff = agent.options[i].effect()
+    #     for s in init:
+    #         pr.overlay_state(s, (0, 255, 0), 255/len(init)+5)
+    #     for s in eff:
+    #         pr.overlay_state(s, (255, 0, 0), 255/len(eff)+5)
+    #     for e in agent.options[i].transitions:
+    #         pr.overlay_transition(
+    #             e.start, e.dest, (255, 0, 0), (0, 255, 0), 255/len(init)+5)
+    pr.game.destroy()
+    plot_options(agent.options)
+
+
+def plot_options(options: List[Option]):
+    import matplotlib.pyplot as plt
+    from sklearn.cluster import DBSCAN
+    from sklearn.neighbors import KernelDensity
+    from sklearn.preprocessing import StandardScaler
+
+    def plot_samples():
+        fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
+        axs = axs.flatten()
+        for i, o in enumerate(options):
+            init = o.initiation()
+            eff = o.effect()
+            axs[i].scatter(init[:, 0], init[:, 1], label="init")
+            axs[i].scatter(eff[:, 0], eff[:, 1], label="eff")
+            axs[i].set_title(o.name)
+        plot.show()
+
+    def plot_clusters():
+        fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
+        axs = axs.flatten()
+        for i, o in enumerate(options):
+            subgoals = partition_options(o)
+            for so in subgoals:
+                init = so.initiation()
+                eff = so.effect()
+                axs[i].scatter(init[:, 0], init[:, 1],
+                               label=so.name, c='C'+str(so.index), marker='x')
+                axs[i].scatter(eff[:, 0], eff[:, 1],
+                               label=so.name, c='C'+str(so.index))
+            axs[i].set_title(o.name)
+        plt.show()
+
+    def plot_classifiers():
+        fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
+        axs = axs.flatten()
+        for i, o in enumerate(options):
+            subgoals = partition_options(o)
+            field = np.zeros((240, 240))
+            test_values = np.transpose(np.meshgrid(
+                np.arange(0, 240, 1), np.arange(0, 240, 1))).reshape((240*240, 2))
+            print(test_values)
+            for so in subgoals:
+                init = so.initiation()
+                eff = so.effect()
+                est = KernelDensity(kernel='gaussian')
+                est.fit(eff)
+                tmp_field = est.score_samples(
+                    test_values).reshape((240, 240))
+
+                print(tmp_field)
+                # for y in range(240):
+                #     for x in range(240):
+                #         res = svm.predict([[x, y]])
+                #         field[y, x] = res[0]
+            axs[i].imshow(field)
+            axs[i].set_title(o.name)
+        plt.show()
+
+    plot_classifiers()
 
 
 if __name__ == "__main__":
