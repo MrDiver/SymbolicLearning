@@ -20,7 +20,7 @@ LowLevelState: TypeAlias = NDArray[Float]
 LowLevelStates: TypeAlias = NDArray[Float]
 SymbolicState: TypeAlias = NDArray[Bool]
 StateTransform: TypeAlias = Callable[[LowLevelState], LowLevelState]
-StateTest: TypeAlias = Callable[[LowLevelState], float]
+StateTest: TypeAlias = Callable[[NDArray[LowLevelState]], NDArray[Float]]
 StateConsumer: TypeAlias = Callable[[LowLevelState], Any]
 
 
@@ -38,7 +38,7 @@ class Option:
         self,
         name: str,
         policy: StateTransform,
-        init_test: StateTest,
+        init_test: StateTest,#TODO: Make this a boolean again
         termination: StateConsumer,
     ) -> None:
         self.name = name
@@ -66,7 +66,7 @@ class Option:
     def execute(
         self, state: LowLevelState, update_callback: Callable[[LowLevelState], None]
     ) -> OptionExecuteReturn:
-        if self.init_test(state) > 0:
+        if self.init_test([state])[0] > 0:
             return OptionExecuteReturn(state, False, 0)
         terminated = False
         start_state = state
@@ -82,7 +82,8 @@ class Option:
 
         return OptionExecuteReturn(state, True, time.time() - start_time)
 
-
+#TODO: Add StateTestProb and init_probability as well as effect_probabilty functions
+#TODO: To generate graph we need to call init_probabilty with all states in our initiation set
 class SubgoalOption(Option):
     def __init__(
         self,
@@ -111,6 +112,7 @@ def partition_options(options: List[Option]) -> List[SubgoalOption]:
     Train SVM for init classifier
     """
     subgoals: List[SubgoalOption] = []
+    svms = []
     for i, option in enumerate(options):
         db = DBSCAN(eps=0.1, min_samples=1).fit(
             StandardScaler().fit_transform(option.effect())
@@ -136,16 +138,56 @@ def partition_options(options: List[Option]) -> List[SubgoalOption]:
                 for i, x in enumerate(option.transitions)
                 if (class_member_mask & core_samples_mask)[i]
             ]
-            svm = SVC(probability=True)
 
-            def test(s: LowLevelState) -> bool:
-                return 1.0
+            def create_test():
+                svm = SVC(class_weight="balanced", probability=True)
+
+                def test(states: NDArray[LowLevelState]) -> NDArray[Float]:
+                    p = svm.predict_proba(states)
+                    return p[:, 0]
+
+                return svm, test
+
+            svm, test = create_test()
 
             subgoals.append(
-                SubgoalOption(k, option, test, init_sub, eff_sub, trans_sub)
+                SubgoalOption(
+                    k,
+                    option,
+                    test,
+                    init_sub,
+                    eff_sub,
+                    trans_sub,
+                )
             )
-            # svm.fit()
-            subgoals[-1].svm = svm
+            svms.append(svm)
+
+    for i, (so, svm) in enumerate(zip(subgoals, svms)):
+        initiation_set = so.initiation()
+        initiation_set_complement = np.array([])
+        # Gather negative examples from other states
+        for j, so2 in enumerate(subgoals):
+            if i == j:
+                continue
+            initiation_set_complement = np.append(
+                initiation_set_complement, so2.initiation()
+            )
+        initiation_set_complement = initiation_set_complement.reshape(
+            -1, initiation_set.shape[1]
+        )
+        # Generate labels
+        labels = np.append(
+            -np.ones(len(initiation_set)), np.ones(len(initiation_set_complement))
+        )
+        data = np.append(initiation_set, initiation_set_complement, axis=0)
+        print(
+            so.name,
+            "Positive:",
+            len(initiation_set),
+            "Negative:",
+            len(initiation_set_complement),
+        )
+        svm.fit(data, labels)
 
     return subgoals
 
@@ -315,9 +357,14 @@ class PlayroomAgent(Agent):
         return _move_dir
 
     def _move_test(self, direction: Direction) -> StateTest:
-        def _move_test_dir(s: LowLevelState) -> float:
-            return self.playroom.execute_no_change_return(
-                s, (lambda: 1 if self.player.collide(direction) else 0)
+        def _move_test_dir(states: NDArray[LowLevelState]) -> NDArray[Float]:
+            return np.array(
+                [
+                    self.playroom.execute_no_change_return(
+                        s, (lambda: 1 if self.player.collide(direction) else 0)
+                    )
+                    for s in states
+                ]
             )
 
         return _move_test_dir
@@ -360,12 +407,12 @@ def main():
             state = res.state
             i += 1
 
-    random_options(state, agent.options, 1000)
-    plot_playroom(pr, agent)
+    random_options(state, agent.options, 5000)
+    # plot_playroom(pr, agent)
 
-    params = image_merge_params()
-    for name, paths in params:
-        combine_images(name, paths)
+    # params = image_merge_params()
+    # for name, paths in params:
+    #     combine_images(name, paths)
     pr.game.destroy()
     plot_options(agent.options)
 
@@ -377,7 +424,7 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
         pr.overlay_states(np.unique(o.initiation(), axis=0), (0, 255, 0))
         pr.overlay_states(np.unique(o.effect(), axis=0), (0, 0, 255))
         for t in o.transitions:
-            pr.overlay_transition(t)
+            pr.overlay_transition(t)5
         pr.overlay_text(o.name, (0, 0))
         pr.overlay_text("- Initiation Set", (0, 25), color=(50, 255, 50))
         pr.overlay_text("- Effect Set", (0, 50), color=(50, 50, 255))
@@ -399,6 +446,9 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
 
 
 def plot_options(options: List[Option]):
+
+    subgoals = partition_options(options)
+
     def plot_samples():
         fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(8, 8))
         axs = axs.flatten()
@@ -412,7 +462,6 @@ def plot_options(options: List[Option]):
     def plot_clusters():
         fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
         axs = axs.flatten()
-        subgoals = partition_options(options)
         for so in subgoals:
             init = so.initiation()
             eff = so.effect()
@@ -435,33 +484,25 @@ def plot_options(options: List[Option]):
             axs[i].set_title(o.name)
 
     def plot_classifiers():
-        subgoals = partition_options(options)
         length = int(np.ceil(np.sqrt(len(subgoals))))
         fig, axs = plt.subplots(ncols=length, nrows=length, figsize=(12, 12))
         axs = axs.flatten()
 
-        # for i, o in enumerate(options):
-        #     field = np.zeros((240, 240))
-        #     test_values = np.transpose(
-        #         np.meshgrid(np.arange(0, 240, 1), np.arange(0, 240, 1))
-        #     ).reshape((240 * 240, 2))
-        #     # print(test_values)
-        #     for so in subgoals:
-        #         init = so.initiation()
-        #         eff = so.effect()
+        resolution = 5
+        for i, o in enumerate(subgoals):
+            # field = np.zeros((240, 240))
+            test_values = np.transpose(
+                np.meshgrid(
+                    np.arange(0, 240, resolution), np.arange(0, 240, resolution)
+                )
+            ).reshape((-1, 2))
 
-        #         ax: plt.Axes = axs[i]
-        #         # est.fit_predict()
-        #         field += labels
-        #         # tmp_field = est.score_samples(test_values).reshape((240, 240))
+            p = o.init_test(test_values)
+            field = p.reshape((240 // resolution, 240 // resolution))
+            # field[y, x] = p
 
-        #         # print(tmp_field)
-        #         # for y in range(240):
-        #         #     for x in range(240):
-        #         #         res = svm.predict([[x, y]])
-        #         #         field[y, x] = res[0]
-        #     axs[i].imshow(field)
-        #     axs[i].set_title(o.name)
+            axs[i].imshow(field)
+            axs[i].set_title(o.name)
 
     plot_clusters()
     plot_classifiers()
