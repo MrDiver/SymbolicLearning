@@ -1,9 +1,13 @@
-
-from enum import Enum
-import pygame as pg
-from pygame.locals import *
 import random as rng
+from enum import Enum
+from logging import root
+from typing import Tuple
+
 import numpy as np
+import pygame as pg
+from matplotlib import image
+from pygame.locals import Rect
+
 vec = pg.math.Vector2
 
 
@@ -25,7 +29,7 @@ class Player(pg.sprite.Sprite):
         super().__init__()
         self.surf = self._create_surface()
         self.rect: Rect = self.surf.get_rect()
-        self.pos = vec((position[0]*16+16, position[1]*16+16))
+        self.pos = vec((position[0] * 16 + 16, position[1] * 16 + 16))
         self._update()
         self.walls = None
         self.step_size = rng.randint(1, 3)
@@ -35,22 +39,23 @@ class Player(pg.sprite.Sprite):
         surf: pg.SurfaceType = pg.Surface((16, 16))
         surf = pg.Surface.convert_alpha(surf)
         surf.set_colorkey((0, 0, 0))
-        surf.blit(tileset, dest=pg.Rect(
-            0, 0, 16, 16), area=pg.Rect(6*16, 15*16, 16, 16))
+        surf.blit(
+            tileset, dest=pg.Rect(0, 0, 16, 16), area=pg.Rect(6 * 16, 15 * 16, 16, 16)
+        )
         return surf
 
     def collide(self, dir: Direction) -> bool:
         if dir is Direction.LEFT:
             self.rect.centerx = self.pos.x - self.step_size
+            # self.rect.centery = self.pos.y - self.step_size
         elif dir is Direction.RIGHT:
             self.rect.centerx = self.pos.x + self.step_size
         elif dir is Direction.UP:
-            self.rect.centery = self.pos.y + self.step_size
-        elif dir is Direction.DOWN:
             self.rect.centery = self.pos.y - self.step_size
+        elif dir is Direction.DOWN:
+            self.rect.centery = self.pos.y + self.step_size
 
-        collided = pg.sprite.spritecollide(
-            Collider(self.rect), self.walls, False)
+        collided = pg.sprite.spritecollide(Collider(self.rect), self.walls, False)
         self.rect.center = self.pos
         return len(collided) > 0
 
@@ -58,12 +63,13 @@ class Player(pg.sprite.Sprite):
         if not self.collide(dir):
             if dir is Direction.LEFT:
                 self.pos.x -= self.step_size
+                # self.pos.y -= self.step_size
             elif dir is Direction.RIGHT:
                 self.pos.x += self.step_size
             elif dir is Direction.UP:
-                self.pos.y += self.step_size
-            elif dir is Direction.DOWN:
                 self.pos.y -= self.step_size
+            elif dir is Direction.DOWN:
+                self.pos.y += self.step_size
 
             self._update()
             self._update_step()
@@ -89,10 +95,12 @@ class Wall(pg.sprite.Sprite):
         tileset = pg.image.load("res/tiles.png")
         self.surf = pg.Surface((16, 16))
         # self.surf.fill((128, 255, 40))
-        self.surf.blit(tileset, dest=pg.Rect(
-            0, 0, 16, 16), area=pg.Rect(1*16, 1*16, 16, 16))
+        self.surf.blit(
+            tileset, dest=pg.Rect(0, 0, 16, 16), area=pg.Rect(1 * 16, 1 * 16, 16, 16)
+        )
         self.rect = self.surf.get_rect(
-            center=vec((position[0]*16+8, position[1]*16+8)))
+            center=vec((position[0] * 16 + 8, position[1] * 16 + 8))
+        )
 
 
 class Ground(pg.sprite.Sprite):
@@ -102,17 +110,22 @@ class Ground(pg.sprite.Sprite):
         tileset = pg.image.load("res/tiles.png")
         self.surf = pg.Surface((16, 16))
         # self.surf.fill((128, 255, 40))
-        self.surf.blit(tileset, dest=pg.Rect(
-            0, 0, 16, 16), area=pg.Rect(2*16, 3*16, 16, 16))
+        self.surf.blit(
+            tileset, dest=pg.Rect(0, 0, 16, 16), area=pg.Rect(2 * 16, 3 * 16, 16, 16)
+        )
         self.rect = self.surf.get_rect(
-            center=vec((position[0]*16+8, position[1]*16+8)))
+            center=vec((position[0] * 16 + 8, position[1] * 16 + 8))
+        )
 
 
 class MiniGame:
-    def __init__(self,) -> None:
+    def __init__(
+        self,
+    ) -> None:
         pg.init()
+        pg.font.init()
         self.fps = pg.time.Clock()
-        self.WIDTH, self.HEIGHT = 720*2, 720*2
+        self.WIDTH, self.HEIGHT = 720, 720
         self.screen = pg.display.set_mode((self.WIDTH, self.HEIGHT), 0, 32)
         self.tmp_screen = pg.Surface((320, 320))
         self.tmp_full_screen = pg.Surface((self.WIDTH, self.HEIGHT), 0, 32)
@@ -122,26 +135,28 @@ class MiniGame:
         self.sprites = pg.sprite.Group()
         self.walls = pg.sprite.Group()
 
-        map_array = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-                     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
+        map_array = [
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        ]
 
         for y in range(len(map_array)):
             for x in range(len(map_array[y])):
@@ -165,20 +180,25 @@ class MiniGame:
         # print("Drawing")
         for entity in self.sprites:
             self.tmp_screen.blit(entity.surf, entity.rect)
-        pg.transform.scale(
-            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.screen)
+        pg.transform.scale(self.tmp_screen, (self.WIDTH, self.HEIGHT), self.screen)
         pg.display.update()
         self.fps.tick()
 
-    def draw_background(self):
+    def overlay_text(
+        self, text: str, pos: Tuple[int, int], size: int = 12, color=(255, 255, 255)
+    ):
+        font = pg.font.SysFont("monospace", size)
+        textsurf = font.render(text, True, color)
+        self.screen.blit(textsurf, pos)
+
+    def overlay_background(self):
         self.tmp_screen.fill((0, 0, 0))
         for entity in self.sprites:
             if entity is not self.player:
                 self.tmp_screen.blit(entity.surf, entity.rect)
-        pg.transform.scale(
-            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.screen)
-        pg.display.update()
-        self.fps.tick()
+        pg.transform.scale(self.tmp_screen, (self.WIDTH, self.HEIGHT), self.screen)
+        # pg.display.update()
+        # self.fps.tick()
 
     def overlay(self, color, alpha):
         self.tmp_screen.fill((0, 0, 0, 0))
@@ -191,10 +211,11 @@ class MiniGame:
         surf.blit(surfcolored, (0, 0))
         self.tmp_screen.blit(surf, self.player.rect)
         pg.transform.scale(
-            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen)
+            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen
+        )
         self.tmp_full_screen.set_alpha(alpha)
         self.screen.blit(self.tmp_full_screen, (0, 0))
-        pg.display.update()
+        # pg.display.update()
 
     def overlay_transition(self, start, end, start_color, end_color, alpha):
         self.tmp_screen.fill((0, 0, 0, 0))
@@ -215,17 +236,68 @@ class MiniGame:
         #     xs = np.interp(ys, [_ys_min, _ys_max], [_xs_min, _xs_max])
         #     # ys = np.interp(_ys, start[1], end[1])
         # points = np.transpose([xs, ys])
-        points = np.linspace(start, end, 50)
+        points = np.linspace(start, end, 30)
 
         colors = np.linspace(start_color, end_color, len(points))
 
-        for i in range(len(points)-1):
-            pg.draw.line(self.tmp_screen, colors[i], points[i], points[i+1])
+        for i in range(len(points) - 1):
+            pg.draw.line(self.tmp_screen, colors[i], points[i], points[i + 1])
         pg.transform.scale(
-            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen)
+            self.tmp_screen, (self.WIDTH, self.HEIGHT), self.tmp_full_screen
+        )
         self.tmp_full_screen.set_alpha(alpha)
         self.screen.blit(self.tmp_full_screen, (0, 0))
+        # pg.display.update()
+
+    def update_screen(self):
         pg.display.update()
+        self.fps.tick()
 
     def destroy(self):
         pg.display.quit()
+
+    def screenshot(self, name: str):
+        print("Writing", name, "-", self.WIDTH, self.HEIGHT)
+        pg.image.save_extended(self.screen, name)
+
+
+def combine_images(name, paths):
+
+    length = len(paths)
+    root2 = int(np.ceil(np.sqrt(length)))
+
+    IDX_X, IDX_Y = (
+        (root2, root2)
+        if (length % root2) == 0
+        else (root2 + 1, length // (root2 + 1))
+        if (length % (root2 + 1)) == 0
+        else (-1, -1)
+    )
+    length += 1
+    root2 = int(np.ceil(np.sqrt(length)))
+    IDX_X, IDX_Y = (
+        (
+            (root2, root2)
+            if (length % root2) == 0
+            else (root2 + 1, length // (root2 + 1))
+            if (length % (root2 + 1)) == 0
+            else (root2, root2)
+        )
+        if IDX_X == -1
+        else (IDX_X, IDX_Y)
+    )
+
+    images = [pg.image.load(path) for path in paths]
+    IMG_WIDTH, IMG_HEIGHT = np.max([im.get_size() for im in images], axis=0)
+
+    coords = [
+        (x * IMG_WIDTH, y * IMG_HEIGHT) for y in range(IDX_Y) for x in range(IDX_X)
+    ]
+
+    out_img: pg.Surface = pg.Surface((IDX_X * IMG_WIDTH, IDX_Y * IMG_HEIGHT), 0, 32)
+    out_img.blits(zip(images, coords))
+    pg.image.save_extended(out_img, name)
+    print("Writing", name, "-", IDX_X * IMG_WIDTH, IDX_Y * IMG_HEIGHT)
+    # out_img.blits()
+    # for im in images:
+    # print(im.get_size())
