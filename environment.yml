@@ -1,0 +1,10 @@
+name: symbolic_learning
+channels:
+  - defaults
+dependencies:
+  - pip
+  - numpy
+  - nptyping
+  - matplotlib
+  - scikit-learn
+  - scikit-learn-intelex

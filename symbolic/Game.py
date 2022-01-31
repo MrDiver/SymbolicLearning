@@ -29,7 +29,7 @@ class Player(pg.sprite.Sprite):
         super().__init__()
         self.surf = self._create_surface()
         self.rect: Rect = self.surf.get_rect()
-        self.pos = vec((position[0] * 16 + 16, position[1] * 16 + 16))
+        self.pos = vec((position[0] * 16 + 8, position[1] * 16 + 8))
         self._update()
         self.walls = None
         self.step_size = rng.randint(1, 3)
@@ -130,7 +130,7 @@ class MiniGame:
         self.tmp_screen = pg.Surface((320, 320))
         self.tmp_full_screen = pg.Surface((self.WIDTH, self.HEIGHT), 0, 32)
         # creating objects
-        self.player = Player((2, 2))
+        self.player = Player((1, 1))
         # Adding sprites to game
         self.sprites = pg.sprite.Group()
         self.walls = pg.sprite.Group()
@@ -157,6 +157,29 @@ class MiniGame:
             [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
             [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
         ]
+
+        # map_array = [
+        #     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+        #     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+        # ]
 
         for y in range(len(map_array)):
             for x in range(len(map_array[y])):
@@ -266,26 +289,14 @@ def combine_images(name, paths):
     length = len(paths)
     root2 = int(np.ceil(np.sqrt(length)))
 
-    IDX_X, IDX_Y = (
-        (root2, root2)
-        if (length % root2) == 0
-        else (root2 + 1, length // (root2 + 1))
-        if (length % (root2 + 1)) == 0
-        else (-1, -1)
-    )
-    length += 1
-    root2 = int(np.ceil(np.sqrt(length)))
-    IDX_X, IDX_Y = (
-        (
-            (root2, root2)
-            if (length % root2) == 0
-            else (root2 + 1, length // (root2 + 1))
-            if (length % (root2 + 1)) == 0
-            else (root2, root2)
-        )
-        if IDX_X == -1
-        else (IDX_X, IDX_Y)
-    )
+    IDX_X, IDX_Y = (1, 1)
+    for i in range(1, root2 + 1):
+        if length % i == 0:
+            IDX_Y = i
+            IDX_X = length // i
+        elif (length + 1) % i == 0:
+            IDX_Y = i
+            IDX_X = (length + 1) // i
 
     images = [pg.image.load(path) for path in paths]
     IMG_WIDTH, IMG_HEIGHT = np.max([im.get_size() for im in images], axis=0)

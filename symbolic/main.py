@@ -4,24 +4,27 @@ Main Module
 import random as rng
 import time
 from collections import namedtuple
-from typing import Any, Callable, List, TypeAlias
+from typing import Any, Callable, List
 
+import graph_tool.all as gt
+
+# from sklearnex import patch_sklearn
+# patch_sklearn()
 import matplotlib.pyplot as plt
 import numpy as np
 from Game import Direction, MiniGame, Player, combine_images
-
-# from hdbscan import HDBSCAN
 from nptyping import Bool, Float, NDArray
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import DBSCAN, OPTICS
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
-LowLevelState: TypeAlias = NDArray[Float]
-LowLevelStates: TypeAlias = NDArray[Float]
-SymbolicState: TypeAlias = NDArray[Bool]
-StateTransform: TypeAlias = Callable[[LowLevelState], LowLevelState]
-StateTest: TypeAlias = Callable[[NDArray[LowLevelState]], NDArray[Float]]
-StateConsumer: TypeAlias = Callable[[LowLevelState], Any]
+LowLevelState = NDArray[Float]
+LowLevelStates = NDArray[Float]
+SymbolicState = NDArray[Bool]
+StateTransform = Callable[[LowLevelState], LowLevelState]
+StateTest = Callable[[NDArray[LowLevelState]], NDArray[Bool]]
+StateProbability = Callable[[NDArray[LowLevelState]], NDArray[Float]]
+StateConsumer = Callable[[LowLevelState], Any]
 
 
 """[summary]
@@ -34,13 +37,17 @@ OptionTransition = namedtuple("OptionTransition", ["start", "dest", "states"])
 
 
 class Option:
+    count: int = 0
+
     def __init__(
         self,
         name: str,
         policy: StateTransform,
-        init_test: StateTest,#TODO: Make this a boolean again
+        init_test: StateTest,
         termination: StateConsumer,
     ) -> None:
+        self.index = Option.count
+        Option.count += 1
         self.name = name
         self.init_test = init_test
         self.policy = policy
@@ -57,6 +64,9 @@ class Option:
         self.effect_set.append(dest)
         self.transitions.append(OptionTransition(start, dest, states))
 
+    def init_test():
+        pass
+
     def effect(self) -> LowLevelStates:
         return np.array(self.effect_set)
 
@@ -66,7 +76,8 @@ class Option:
     def execute(
         self, state: LowLevelState, update_callback: Callable[[LowLevelState], None]
     ) -> OptionExecuteReturn:
-        if self.init_test([state])[0] > 0:
+        # print(state)
+        if not self.init_test([state])[0] > 0:
             return OptionExecuteReturn(state, False, 0)
         terminated = False
         start_state = state
@@ -82,14 +93,16 @@ class Option:
 
         return OptionExecuteReturn(state, True, time.time() - start_time)
 
-#TODO: Add StateTestProb and init_probability as well as effect_probabilty functions
-#TODO: To generate graph we need to call init_probabilty with all states in our initiation set
+
+# TODO: Add StateTestProb and init_probability as well as effect_probabilty functions
+# TODO: To generate graph we need to call init_probabilty with all states in our initiation set
 class SubgoalOption(Option):
     def __init__(
         self,
         index: int,
         option: Option,
-        init_test: StateTest,
+        init_probability: StateProbability,
+        eff_probability: StateProbability,
         initiation_set: LowLevelStates,
         effect_set: LowLevelStates,
         transitions: List[OptionTransition],
@@ -97,13 +110,21 @@ class SubgoalOption(Option):
         super().__init__(
             "{}[{}]".format(option.name, index),
             option.policy,
-            init_test,
+            option.init_test,
             option.termination,
         )
         self.index = index
         self.option = option
+        self.init_probability = init_probability
+        self.eff_probability = eff_probability
         for i, (start, dest) in enumerate(zip(initiation_set, effect_set)):
             self._add_transition(start, dest, transitions[i].states)
+
+    def init_probability(states):
+        pass
+
+    def eff_probability(states):
+        pass
 
 
 def partition_options(options: List[Option]) -> List[SubgoalOption]:
@@ -111,58 +132,68 @@ def partition_options(options: List[Option]) -> List[SubgoalOption]:
     Partition options with DBSCAN into subgoals
     Train SVM for init classifier
     """
+    scaler = StandardScaler()
+    for o in options:
+        scaler.partial_fit(o.initiation())
+        scaler.partial_fit(o.effect())
+    print("Data Info -", scaler.scale_)
     subgoals: List[SubgoalOption] = []
-    svms = []
+    estimators = []
     for i, option in enumerate(options):
-        db = DBSCAN(eps=0.1, min_samples=1).fit(
-            StandardScaler().fit_transform(option.effect())
-        )
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
+        db = DBSCAN(eps=0.1, min_samples=1).fit(scaler.transform(option.effect()))
+        # optics = OPTICS(min_samples=0.3)
+        # optics.fit(StandardScaler().fit_transform(option.effect()))
+        # print(optics.labels_)
+        # core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
+        # core_samples_mask[db.core_sample_indices_] = True
+
         labels = db.labels_
         n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
 
         unique_labels = set(labels)
-
+        # print(unique_labels)
+        # print(labels)
         print("Partitioned", option.name, "into", n_clusters_, "clusters")
         for k in unique_labels:
+            if k == -1:
+                continue
+            # print("Check", k)
             class_member_mask = labels == k
+            # print(class_member_mask)
+            # print(core_samples_mask)
 
-            eff_sub = option.effect()[class_member_mask & core_samples_mask]
-            init_sub = option.initiation()[class_member_mask & core_samples_mask]
-            trans_sub = np.array(option.transitions, dtype=object)[
-                class_member_mask & core_samples_mask
-            ]
+            eff_sub = option.effect()[class_member_mask]
+            init_sub = option.initiation()[class_member_mask]
+            trans_sub = np.array(option.transitions, dtype=object)[class_member_mask]
             trans_sub = [
-                x
-                for i, x in enumerate(option.transitions)
-                if (class_member_mask & core_samples_mask)[i]
+                x for i, x in enumerate(option.transitions) if (class_member_mask)[i]
             ]
 
             def create_test():
-                svm = SVC(class_weight="balanced", probability=True)
+                svm = SVC(class_weight="balanced", probability=True, C=10.0)
 
                 def test(states: NDArray[LowLevelState]) -> NDArray[Float]:
                     p = svm.predict_proba(states)
-                    return p[:, 0]
+                    return (1 - p[:, 1]) * p[:, 0]
 
                 return svm, test
 
-            svm, test = create_test()
+            estimator, test = create_test()
 
             subgoals.append(
                 SubgoalOption(
                     k,
                     option,
                     test,
+                    (lambda s: [1] * len(s)),
                     init_sub,
                     eff_sub,
                     trans_sub,
                 )
             )
-            svms.append(svm)
+            estimators.append(estimator)
 
-    for i, (so, svm) in enumerate(zip(subgoals, svms)):
+    for i, (so, estimator) in enumerate(zip(subgoals, estimators)):
         initiation_set = so.initiation()
         initiation_set_complement = np.array([])
         # Gather negative examples from other states
@@ -187,9 +218,108 @@ def partition_options(options: List[Option]) -> List[SubgoalOption]:
             "Negative:",
             len(initiation_set_complement),
         )
-        svm.fit(data, labels)
+        estimator.fit(data, labels)
 
     return subgoals
+
+
+class OptionNode:
+    def __init__(self, name) -> None:
+        pass
+
+
+def generate_planning_graph(
+    start_states: NDArray[LowLevelState], subgoals: List[SubgoalOption]
+) -> gt.Graph:
+    # Generate Graph and add properties
+    g = gt.Graph()
+    node_names = g.new_vertex_property("string")
+    edge_names = g.new_edge_property("string")
+    node_option = g.new_vertex_property("int")
+    edge_option = g.new_edge_property("int")
+    g.vp.label = node_names
+    g.vp.option = node_option
+    g.ep.label = edge_names
+    g.ep.option = edge_option
+
+    # Add names to nodes for the effect sets of the subgoals
+    g.add_vertex(len(subgoals))
+    subgoal_nodes = g.get_vertices()
+    max_option = 0
+    for i, v in enumerate(subgoal_nodes):
+        if subgoals[i].option.name == "Goal":
+            node_names[v] = "Goal"
+        else:
+            node_names[v] = str(subgoals[i].index)
+        node_option[v] = subgoals[i].option.index
+        max_option = max(max_option, subgoals[i].option.index)
+
+    # Generate Start
+    start_node = g.add_vertex()
+    node_names[start_node] = "Start"
+    node_option[start_node] = max_option
+    for j, v2 in enumerate(subgoal_nodes[:]):
+        s2 = subgoals[j]
+        probs = s2.init_probability(start_states)
+        checked = np.all(probs > 0.01)
+        if checked:
+            e = g.add_edge(start_node, v2)
+            edge_names[e] = "Start"
+            edge_option[e] = max_option
+
+    # Generate All Edges
+    for i, v1 in enumerate(subgoal_nodes[:]):
+        for j, v2 in enumerate(subgoal_nodes[:]):
+            if i == j:
+                continue
+
+            s1 = subgoals[i]
+            s2 = subgoals[j]
+            probs = s2.init_probability(s1.effect())
+            checked = np.all(probs > 0.01)
+            if checked:
+                e = g.add_edge(v1, v2)
+                edge_names[e] = subgoals[i].name
+                edge_option[e] = s1.option.index
+
+    return g
+
+
+def plot_planning_graph(g):
+    import cairo
+
+    # Plotting FUN
+
+    colors = g.new_vertex_property("float")
+    for v in g.get_vertices():
+        idx = g.vp.option[v]
+        colors[v] = idx / 4
+
+    # pos = gt.random_layout(g)
+    pos = gt.sfdp_layout(g, theta=0.2, multilevel=True, C=15.0, p=2)
+    gt.graph_draw(
+        g,
+        pos,
+        groups=g.vp.option,
+        edge_pen_width=2,
+        vertex_aspect=1,
+        vertex_text_position=-1,
+        # vertex_text_offset=[-0.12, 0.0],
+        vertex_text_color="black",
+        vertex_font_family="sans",
+        vertex_font_weight=cairo.FONT_WEIGHT_NORMAL,
+        vertex_font_slant=cairo.FONT_SLANT_NORMAL,
+        vertex_font_size=10,
+        vertex_fill_color=g.vp.option,
+        vertex_color=None,
+        vertex_shape=g.vp.option,
+        vertex_size=20,
+        output_size=(500, 500),
+        vertex_text=g.vp.label,
+        edge_color=g.ep.option,
+        edge_marker_size=15,
+        ink_scale=1,
+    )
 
 
 class PropositionSymbol:
@@ -320,28 +450,41 @@ class PlayroomAgent(Agent):
         super().__init__(
             [
                 Option(
-                    "MoveLeft",
+                    "Left",
                     self._move(Direction.LEFT),
                     self._move_test(Direction.LEFT),
                     self._move_terminate(Direction.LEFT),
                 ),
                 Option(
-                    "MoveRight",
+                    "Right",
                     self._move(Direction.RIGHT),
                     self._move_test(Direction.RIGHT),
                     self._move_terminate(Direction.RIGHT),
                 ),
                 Option(
-                    "MoveUp",
+                    "Up",
                     self._move(Direction.UP),
                     self._move_test(Direction.UP),
                     self._move_terminate(Direction.UP),
                 ),
                 Option(
-                    "MoveDown",
+                    "Down",
                     self._move(Direction.DOWN),
                     self._move_test(Direction.DOWN),
                     self._move_terminate(Direction.DOWN),
+                ),
+                Option(
+                    "Goal",
+                    (lambda s: s),
+                    (
+                        lambda states: np.array(
+                            [
+                                (1 if (s[0] > 290) and (s[1] > 290) else 0)
+                                for s in states
+                            ]
+                        )
+                    ),
+                    (lambda s: 1),
                 ),
             ]
         )
@@ -357,11 +500,11 @@ class PlayroomAgent(Agent):
         return _move_dir
 
     def _move_test(self, direction: Direction) -> StateTest:
-        def _move_test_dir(states: NDArray[LowLevelState]) -> NDArray[Float]:
+        def _move_test_dir(states: NDArray[LowLevelState]) -> NDArray[Bool]:
             return np.array(
                 [
                     self.playroom.execute_no_change_return(
-                        s, (lambda: 1 if self.player.collide(direction) else 0)
+                        s, (lambda: 0 if self.player.collide(direction) else 1)
                     )
                     for s in states
                 ]
@@ -382,11 +525,21 @@ class PlayroomAgent(Agent):
         return _move_terminate_dir
 
 
+"""
+####################################################################
+
+                        MAIN SECTION
+
+####################################################################
+"""
+
+
 def main():
     pr = Playroom()
     game = pr.game
     agent: Agent = PlayroomAgent(pr, game.player)
-    state = pr.get_state()
+    start_state = pr.get_state()
+    state = start_state
 
     def recurse_options(state: LowLevelState, options: List[Option], depth: int):
         if depth <= 0:
@@ -407,14 +560,22 @@ def main():
             state = res.state
             i += 1
 
-    random_options(state, agent.options, 5000)
-    # plot_playroom(pr, agent)
+    random_options(state, agent.options, 1000)
+    plot_playroom(pr, agent)
 
-    # params = image_merge_params()
-    # for name, paths in params:
-    #     combine_images(name, paths)
     pr.game.destroy()
-    plot_options(agent.options)
+    # plot_options(agent.options)
+    graph = generate_planning_graph([start_state], partition_options(agent.options))
+    plot_planning_graph(graph)
+
+
+"""
+####################################################################
+
+                    PLOTTING SECTION
+
+####################################################################
+"""
 
 
 def plot_playroom(pr: Playroom, agent: PlayroomAgent):
@@ -424,7 +585,7 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
         pr.overlay_states(np.unique(o.initiation(), axis=0), (0, 255, 0))
         pr.overlay_states(np.unique(o.effect(), axis=0), (0, 0, 255))
         for t in o.transitions:
-            pr.overlay_transition(t)5
+            pr.overlay_transition(t)
         pr.overlay_text(o.name, (0, 0))
         pr.overlay_text("- Initiation Set", (0, 25), color=(50, 255, 50))
         pr.overlay_text("- Effect Set", (0, 50), color=(50, 50, 255))
@@ -444,6 +605,15 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
     for i, o in enumerate(subgoals):
         plot_option(o)
 
+    params = image_merge_params()
+    newpaths = []
+    for name, main, paths in params:
+        for p in paths:
+            newpaths.append(p)
+        paths.append(main)
+        combine_images(name, paths)
+    combine_images("images/combinedALL.png", newpaths)
+
 
 def plot_options(options: List[Option]):
 
@@ -455,9 +625,11 @@ def plot_options(options: List[Option]):
         for i, o in enumerate(options):
             init = o.initiation()
             eff = o.effect()
-            axs[i].scatter(init[:, 0], init[:, 1], label="init")
+            axs[i].scatter(init[:, 0], init[:, 1], label="init", alpha=0.1)
             axs[i].scatter(eff[:, 0], eff[:, 1], label="eff")
             axs[i].set_title(o.name)
+
+        fig.tight_layout()
 
     def plot_clusters():
         fig, axs = plt.subplots(ncols=2, nrows=2, figsize=(12, 12))
@@ -483,28 +655,35 @@ def plot_options(options: List[Option]):
         for i, o in enumerate(options):
             axs[i].set_title(o.name)
 
+        fig.tight_layout()
+
     def plot_classifiers():
         length = int(np.ceil(np.sqrt(len(subgoals))))
         fig, axs = plt.subplots(ncols=length, nrows=length, figsize=(12, 12))
         axs = axs.flatten()
 
-        resolution = 5
+        resolution = 100
+        for ax in axs:
+            ax.set_axis_off()
         for i, o in enumerate(subgoals):
             # field = np.zeros((240, 240))
             test_values = np.transpose(
                 np.meshgrid(
-                    np.arange(0, 240, resolution), np.arange(0, 240, resolution)
+                    np.linspace(-10, 310, resolution), np.linspace(-10, 310, resolution)
                 )
             ).reshape((-1, 2))
 
-            p = o.init_test(test_values)
-            field = p.reshape((240 // resolution, 240 // resolution))
+            p = o.init_probability(test_values)
+            field = p.reshape((resolution, resolution)).T
             # field[y, x] = p
+            ax: plt.Axes = axs[i]
+            ax.imshow(field)
+            ax.set_title(o.name)
+        fig.suptitle("Initiation Sets of Partitioned Subgoals")
+        fig.tight_layout()
 
-            axs[i].imshow(field)
-            axs[i].set_title(o.name)
-
-    plot_clusters()
+    # plot_samples()
+    # plot_clusters()
     plot_classifiers()
     plt.show()
 
@@ -527,11 +706,11 @@ def image_merge_params(prefix="images/"):
     for group, paths in subs.items():
         if group.find("combined") != -1:
             continue
-        paths.append(group)
         res.append(
             (
-                "{}{}{}{}".format(prefix, "combined", group, ".png"),
-                ["{}{}{}".format(prefix, path, ".png") for path in paths],
+                "{}{}{}{}".format(prefix, "combined", group, postfix),
+                "{}{}{}".format(prefix, group, postfix),
+                ["{}{}{}".format(prefix, path, postfix) for path in paths],
             )
         )
 
@@ -539,4 +718,11 @@ def image_merge_params(prefix="images/"):
 
 
 if __name__ == "__main__":
+    import os
+
+    os.chdir(os.path.dirname(__file__))
+    os.chdir("../")  # import os
+
+    os.chdir(os.path.dirname(__file__))
+    os.chdir("../")
     main()
