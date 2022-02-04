@@ -60,13 +60,19 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
     # Plot Options
     init_color = (0, 255, 0)
     effect_color = (255, 255, 0)
+    remainder_color = (0, 50, 255)
 
-    def plot_option(o):
+    def plot_option(o: Option):
+        # Draw Background
         pr.overlay_background()
-        pr.overlay_states(np.unique(o.initiation(), axis=0), init_color, ui_offset=-100)
-        pr.overlay_states(np.unique(o.effect(), axis=0), effect_color)
+        # Draw Transition Lines
         for t in o.transitions:
             pr.overlay_transition(t)
+        # Draw initiation, effect, remainder
+        pr.overlay_states(o.remainder(o.initiation()), remainder_color, ui_offset=-200)
+        pr.overlay_states(np.unique(o.initiation(), axis=0), init_color, ui_offset=-100)
+        pr.overlay_states(np.unique(o.effect(), axis=0), effect_color)
+
         pr.overlay_text(o.name, (1, 1), size=20)
         pr.overlay_text(
             "Initiation Set",
@@ -78,6 +84,12 @@ def plot_playroom(pr: Playroom, agent: PlayroomAgent):
             "Effect Set",
             (200, pr.game.HEIGHT - 25),
             color=effect_color,
+            size=20,
+        )
+        pr.overlay_text(
+            "Remainder(Init)",
+            (400, pr.game.HEIGHT - 25),
+            color=remainder_color,
             size=20,
         )
         pr.update_screen()

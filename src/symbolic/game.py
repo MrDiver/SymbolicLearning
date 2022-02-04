@@ -1,6 +1,6 @@
 import random as rng
 from enum import Enum
-from typing import Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pygame as pg
@@ -28,7 +28,6 @@ class Player(pg.sprite.Sprite):
         self.surf = self._create_surface()
         self.rect: Rect = self.surf.get_rect()
         self.pos = vec((position[0] * 16 + 8, position[1] * 16 + 8))
-        self.keys = 0
         self._update()
         self.wall_sprites = None
         self.key_sprites = None
@@ -68,7 +67,6 @@ class Player(pg.sprite.Sprite):
     def pick_key(self) -> bool:
         collided = pg.sprite.spritecollide(Collider(self.rect), self.key_sprites, True)
         if len(collided) > 0:
-            self.keys += 1
             return True
         return False
 
@@ -90,21 +88,27 @@ class Player(pg.sprite.Sprite):
         return False
 
     def _update_step(self):
-        self.step_size = rng.randint(1, 3)
+        self.step_size = rng.randint(1, 10)
 
-    def set_state(self, x, y, keys):
+    def set_position(self, x, y):
         self.pos.x = x
         self.pos.y = y
         self.rect.center = self.pos
-        self.keys = keys
+
+    def get_position(self):
+        return [self.pos.x, self.pos.y]
 
     def _update(self):
         self.rect.center = self.pos
 
 
 class Key(pg.sprite.Sprite):
+    key_id = 0
+
     def __init__(self, position):
         super().__init__()
+        self.id = Key.key_id
+        Key.key_id += 1
         self.surf = pg.Surface((16, 16))
         tileset = pg.image.load("res/tiles.png")
         self.surf = pg.Surface((16, 16))
@@ -156,16 +160,17 @@ class MiniGame:
         pg.font.init()
         self.fps = pg.time.Clock()
         self.WIDTH, self.HEIGHT = 720, 720
-        self.screen = pg.display.set_mode((self.WIDTH, self.HEIGHT), 0, 32)
-        self.tmp_screen = pg.Surface((320, 320))
-        self.tmp_full_screen = pg.Surface((self.WIDTH, self.HEIGHT), 0, 32)
+        self.screen: pg.Surface = pg.display.set_mode((self.WIDTH, self.HEIGHT), 0, 32)
+        self.tmp_screen: pg.Surface = pg.Surface((320, 320))
+        self.tmp_full_screen: pg.Surface = pg.Surface((self.WIDTH, self.HEIGHT), 0, 32)
         # creating objects
-        self.player = Player((1, 1))
+        self.player: Player = Player((1, 1))
         # Adding sprites to game
-        self.sprites = pg.sprite.Group()
-        self.walls = pg.sprite.Group()
-        self.keys = pg.sprite.Group()
-        self.interactibles = pg.sprite.Group()
+        self.sprites: pg.sprite.Group = pg.sprite.Group()
+        self.walls: pg.sprite.Group = pg.sprite.Group()
+        self.keys: pg.sprite.Group = pg.sprite.Group()
+        self.key_list: List[Key] = []
+        self.interactibles: pg.sprite.Group = pg.sprite.Group()
 
         # map_array = [
         #     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -229,6 +234,7 @@ class MiniGame:
                     sprite = Key((x, y))
                     self.sprites.add(Ground((x, y)))
                     self.keys.add(sprite)
+                    self.key_list.append(sprite)
                     self.interactibles.add(sprite)
 
                 if sprite is not None:
@@ -240,24 +246,31 @@ class MiniGame:
         self.sprites.add(self.player)
         self.interactibles.add(self.player)
 
+    def get_key_states(self) -> List[int]:
+        """Returns a list with 0 for non picked keys and 1 for picked keys
+
+        Returns:
+            List[int]: state list of keys
+        """
+        states = []
+        for key in self.key_list:
+            if key.alive():
+                states.append(0)
+            else:
+                states.append(1)
+
+        return states
+
+    def set_key_states(self, states: List[int]):
+        for i, key in enumerate(self.key_list):
+            key.kill()
+            if states[i] == 0:
+                self.keys.add(key)
+                self.interactibles.add(key)
+                self.sprites.add(key)
+
     def reset(self):
-        self.keys.empty()
-        self.interactibles.empty()
-
-        for y in range(len(self.map_array)):
-            for x in range(len(self.map_array[y])):
-                sprite = None
-
-                if self.map_array[y][x] == 2:
-                    sprite = Key((x, y))
-                    self.sprites.add(Ground((x, y)))
-                    self.keys.add(sprite)
-                    self.interactibles.add(sprite)
-
-                if sprite is not None:
-                    self.sprites.add(sprite)
-
-        self.interactibles.add(self.player)
+        self.set_key_states([0] * len(self.key_list))
 
     def draw(self):
         self.tmp_screen.fill((0, 0, 0))
@@ -314,7 +327,7 @@ class MiniGame:
             self.tmp_full_screen.set_alpha(alpha)
             self.screen.blit(self.tmp_full_screen, (0, 0))
         self.overlay_text(
-            "Keys: {}".format(int(self.player.keys)),
+            "Keys: {}".format(int(np.array(self.get_key_states()).sum())),
             (self.WIDTH - 100 + ui_offset, 10),
             size=15,
             color=color,

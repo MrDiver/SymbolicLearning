@@ -1,6 +1,7 @@
 """The agent module holds all classes and types necessary for an agent to be created
 
 """
+from abc import abstractmethod
 from typing import Any, Callable, List, Tuple
 
 import numpy as np
@@ -19,6 +20,7 @@ from symbolic.option_framework import (
     StateTest,
     StateTransform,
 )
+from symbolic.tools import StateBounds
 
 
 class Playroom:
@@ -27,6 +29,10 @@ class Playroom:
     def __init__(self: Self) -> None:
         self.game: MiniGame = MiniGame()
         self.start_state: LowLevelState = self.get_state()
+        tmp = [(0, 300), (0, 300)]
+        for i in self.game.get_key_states():
+            tmp.append((0, 1))
+        self.state_bounds = StateBounds(tmp)
 
     def get_state(self: Self) -> LowLevelState:
         """Returns the current state of the game
@@ -37,13 +43,11 @@ class Playroom:
         Returns:
             LowLevelState: the current low-level state of the internal MiniGame
         """
-        return np.array(
-            [
-                self.game.player.pos.x,
-                self.game.player.pos.y,
-                self.game.player.keys,
-            ]
-        )
+        player_pos = np.array(self.game.player.get_position())
+        key_states = np.array(self.game.get_key_states())
+        current_state = np.append(player_pos, key_states).flatten()
+        # print("Getting", current_state)
+        return current_state
 
     def set_state(self: Self, state: LowLevelState) -> None:
         """Sets the low-level state
@@ -51,7 +55,9 @@ class Playroom:
         Args:
             s (LowLevelState): the new low-level state
         """
-        self.game.player.set_state(state[0], state[1], state[2])
+        # print("Setting", state)
+        self.game.player.set_position(state[0], state[1])
+        self.game.set_key_states(state[2:])
 
     def reset(self: Self) -> LowLevelState:
         """Resets the internal MiniGame returns the new state
@@ -248,6 +254,7 @@ class Agent:
         self._done = False
         return self._reset()
 
+    @abstractmethod
     def _reset(self: Self) -> None:
         """Internal reset function to be implemented by the subclass
 
@@ -268,26 +275,36 @@ class PlayroomAgent(Agent):
                     self._move(Direction.LEFT),
                     self._move_test(Direction.LEFT),
                     self._move_terminate(Direction.LEFT),
+                    playroom.state_bounds,
                 ),
                 Option(
                     "Right",
                     self._move(Direction.RIGHT),
                     self._move_test(Direction.RIGHT),
                     self._move_terminate(Direction.RIGHT),
+                    playroom.state_bounds,
                 ),
                 Option(
                     "Up",
                     self._move(Direction.UP),
                     self._move_test(Direction.UP),
                     self._move_terminate(Direction.UP),
+                    playroom.state_bounds,
                 ),
                 Option(
                     "Down",
                     self._move(Direction.DOWN),
                     self._move_test(Direction.DOWN),
                     self._move_terminate(Direction.DOWN),
+                    playroom.state_bounds,
                 ),
-                Option("Take", self._take(), self._take_test(), (lambda s: 1)),
+                Option(
+                    "Take",
+                    self._take(),
+                    self._take_test(),
+                    (lambda s: 1),
+                    playroom.state_bounds,
+                ),
                 Option(
                     "Goal",
                     (lambda s: [self.done(), s][1]),
@@ -304,6 +321,7 @@ class PlayroomAgent(Agent):
                         )
                     ),
                     (lambda s: 1),
+                    playroom.state_bounds,
                 ),
             ]
         )
@@ -313,7 +331,7 @@ class PlayroomAgent(Agent):
     def _reset(self: Self) -> LowLevelState:
         return self.playroom.reset()
 
-    def _move(self, direction: Direction) -> StateTransform:
+    def _move(self: Self, direction: Direction) -> StateTransform:
         def _move_dir(state: LowLevelState) -> LowLevelState:
             return self.playroom.execute_no_change(
                 state, (lambda: self.player.move(direction))
@@ -321,7 +339,7 @@ class PlayroomAgent(Agent):
 
         return _move_dir
 
-    def _move_test(self, direction: Direction) -> StateTest:
+    def _move_test(self: Self, direction: Direction) -> StateTest:
         def _move_test_dir(states: LowLevelStates) -> nptype.NDArray[np.bool8]:
             return np.array(
                 [
@@ -334,13 +352,13 @@ class PlayroomAgent(Agent):
 
         return _move_test_dir
 
-    def _take(self):
+    def _take(self: Self):
         def _take_(state: LowLevelState) -> LowLevelState:
             return self.playroom.execute_no_change(state, self.player.pick_key)
 
         return _take_
 
-    def _take_test(self) -> StateTest:
+    def _take_test(self: Self) -> StateTest:
         def _take_test_(states: LowLevelStates) -> nptype.NDArray[np.bool8]:
             return np.array(
                 [
@@ -353,7 +371,7 @@ class PlayroomAgent(Agent):
 
         return _take_test_
 
-    def _move_terminate(self, direction: Direction) -> StateConsumer:
+    def _move_terminate(self: Self, direction: Direction) -> StateConsumer:
         def _move_terminate_dir(state: LowLevelState) -> float:
             return (
                 1

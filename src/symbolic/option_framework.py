@@ -12,14 +12,14 @@ from sklearn.svm import SVC
 # trunk-ignore(mypy/attr-defined)
 from typing_extensions import Self, TypeAlias
 
-from symbolic.tools import get_color
+from symbolic.tools import Projection, StateBounds, get_color
 
-LowLevelState: TypeAlias = nptype.NDArray[np.float64]
-LowLevelStates: TypeAlias = nptype.NDArray[np.float64]
+LowLevelState: TypeAlias = nptype.NDArray[np.floating]
+LowLevelStates: TypeAlias = nptype.NDArray[np.floating]
 SymbolicState: TypeAlias = nptype.NDArray[np.bool8]
 StateTransform = Callable[[LowLevelState], LowLevelState]
 StateTest = Callable[[LowLevelStates], nptype.NDArray[np.bool8]]
-StateProbability = Callable[[LowLevelStates], nptype.NDArray[np.float64]]
+StateProbability = Callable[[LowLevelStates], nptype.NDArray[np.floating]]
 StateConsumer = Callable[[LowLevelState], Any]
 
 
@@ -41,6 +41,7 @@ class Option:
         policy: StateTransform,
         init_test: StateTest,
         termination: StateConsumer,
+        state_bounds: StateBounds,
     ) -> None:
         self.index = Option.count
         Option.count += 1
@@ -48,6 +49,7 @@ class Option:
         self.init_test = init_test
         self.policy = policy
         self.termination = termination
+        self.state_bounds = state_bounds
 
         self.initiation_set: List[LowLevelState] = []
         self.initiation_set_complement: List[LowLevelState] = []
@@ -67,31 +69,35 @@ class Option:
     def initiation(self) -> LowLevelStates:
         return np.array(self.initiation_set)
 
-    def remainder(self) -> LowLevelStates:
-        raise NotImplementedError  # TODO: define remainder
+    def remainder(self, states: LowLevelStates, resolution=10) -> LowLevelStates:
+        return Projection(states, self.mask(), self.state_bounds).to_array(resolution)
+
+    def remainder_projection(self, states: LowLevelStates) -> Projection:
+        return Projection(states, self.mask(), self.state_bounds)
 
     # Not a complete mathematical check but good enough
     def weak_subgoal_condition(self, options: List[Self]) -> bool:
-        print("Checking weak subgoal for {}".format(self.name))
+        # print(f"Checking weak subgoal for {self.name}")
         failed = []
-        for o in options:
-            if o == self:
+        for option in options:
+            if option == self:
                 continue
-            for X in self.effect():
-                image_check = o.init_test([X]).all()
-                effect_check = o.init_test(self.effect()).all()
+            unique_effect = np.unique(self.effect(), axis=0)
+            for eff_state in unique_effect:
+                image_check = option.init_test([eff_state]).all()
+                effect_check = option.init_test(unique_effect).all()
                 if not image_check == effect_check:
-                    failed.append(o)
+                    failed.append(option)
                     break
         if len(failed) > 0:
-            print(" - Condition does not hold with {}".format(failed))
+            # print(f" - Condition does not hold with {failed}")
             return False
 
-        print(" - Condition Holds")
+        # print(" - Condition Holds")
         return True
 
     def strong_subgoal_condition(self, options: List[Self]) -> bool:
-        print("Checking strong subgoal for {}".format(self.name))
+        # print("Checking strong subgoal for {}".format(self.name))
         failed = []
 
         # calculating sub effect sets for every unique starting point
@@ -109,16 +115,16 @@ class Option:
                     failed.append(o)
                     break
         if len(failed) > 0:
-            print(" - Condition does not hold with {}".format(failed))
+            # print(" - Condition does not hold with {}".format(failed))
             return False
-        print(" - Condition Holds")
+        # print(" - Condition Holds")
         return True
 
     def mask_bool(self, eps=1e-3) -> nptype.NDArray[np.bool8]:
         if len(self.initiation_set) > 0:
-            modified = np.zeros_like(self.initiation_set[0]) == 0
+            modified = np.zeros_like(self.initiation_set[0]) != 0
             for t in self.transitions:
-                modified &= np.abs(t.start - t.dest) > eps
+                modified |= np.abs(t.start - t.dest) > eps
             return modified
 
     def mask(self, eps=1e-3) -> nptype.NDArray[np.int64]:
@@ -168,10 +174,11 @@ class SubgoalOption(Option):
         transitions: List[OptionTransition],
     ):
         super().__init__(
-            "{}{}".format(option.name, index),
+            f"{option.name}[{index}]",
             option.policy,
             option.init_test,
             option.termination,
+            option.state_bounds,
         )
         self.index = index
         self.option = option
@@ -320,20 +327,32 @@ class Factor:
         self.options = options
 
     def __str__(self) -> str:
-        return "F:{} - {}".format(self.indices, self.options)
+        return f"F:{self.indices} - {self.options}"
 
     def __repr__(self) -> str:
         return self.__str__()
 
+    def is_independent(self, option: Option, factors: List[Self]) -> bool:
+        states = option.effect()
+        other_ids = [i for f in factors for i in f.indices if i not in self.indices]
+        partitioned_states = (
+            Projection(states, self.indices, option.state_bounds)
+            .intersect(Projection(states, other_ids, option.state_bounds))
+            .to_array()
+        )
+        return np.array_equal(
+            np.unique(states, axis=0), np.unique(partitioned_states, axis=0)
+        )
+
 
 # Very unclear algorithm TODO: fix this
 def calculate_factors(options: List[Option]) -> List[Factor]:
-    masks = np.array([o.mask_bool() for o in options])
     print("Computing Factors")
+    masks = np.array([o.mask_bool() for o in options])
     state_modified_by = []
+
     for i in range(len(masks[0])):
         modifies = [o for o, p in zip(options, masks[:, i]) if p]
-        # print(modifies)
         state_modified_by.append(modifies)
 
     factors = []
@@ -353,10 +372,16 @@ def calculate_factors(options: List[Option]) -> List[Factor]:
                 used.append(j)
         f = Factor(state_ids, mod)
         factors.append(f)
-
-    for f in factors:
-        print(f)
     return factors
+
+
+def get_factors_for_option(option: Option, factors: List[Factor]) -> List[Factor]:
+    tmp = []
+    for f in factors:
+        if option in f.options:
+            tmp.append(f)
+
+    return tmp
 
 
 class Node:

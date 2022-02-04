@@ -12,9 +12,10 @@ from symbolic.option_framework import (
     Option,
     calculate_factors,
     generate_planning_graph,
+    get_factors_for_option,
     partition_options,
 )
-from symbolic.plotting_framework import plot_planning_graph
+from symbolic.plotting_framework import plot_planning_graph, plot_playroom
 
 
 def check_subgoal_conditions(options: List[Option]) -> None:
@@ -23,11 +24,17 @@ def check_subgoal_conditions(options: List[Option]) -> None:
     Args:
         options (List[Option]): a list of options
     """
+    weaks = []
+    strongs = []
     for opt in options:
-        opt.weak_subgoal_condition(options)
+        if opt.strong_subgoal_condition(options):
+            strongs.append(opt)
+    for opt in options:
+        if opt.weak_subgoal_condition(options):
+            weaks.append(opt)
 
-    for opt in options:
-        opt.strong_subgoal_condition(options)
+    print(f"Is Weak Subgoal {weaks}")
+    print(f"Is Strong Subgoal {strongs}")
 
 
 def main():
@@ -72,15 +79,25 @@ def main():
             i += 1
 
     random_options(state, agent.options, 1000)
-    # plot_playroom(pr, agent)
+    # plot_playroom(playroom, agent)
 
     playroom.game.destroy()
 
     subgoals = partition_options(agent.options)
-    check_subgoal_conditions(agent.options)
-    check_subgoal_conditions(subgoals)
+    # check_subgoal_conditions(agent.options)
+    # check_subgoal_conditions(subgoals)
 
-    calculate_factors(agent.options)
+    factors = calculate_factors(subgoals)
+    for f in factors:
+        print(f)
+
+    for o in subgoals:
+        print(o.name)
+        factors_o = get_factors_for_option(o, factors)
+        for f in factors_o:
+            independent = f.is_independent(o, factors_o)
+            print("\t", f.indices, independent)
+
     # plot_options(agent.options)
     # graph = generate_planning_graph([start_state], partition_options(agent.options))
     # plot_planning_graph(graph)
