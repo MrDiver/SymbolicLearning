@@ -1,5 +1,5 @@
 run:
-	python symbolic/main.py
+	python src/main.py
 
 clean:
 	rm -r images/*

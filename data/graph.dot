@@ -1,0 +1,78 @@
+strict digraph {
+
+    layout = sfdp;
+	//K=1;
+	start=0
+	overlap = prism1000;
+    splines = curved;
+    repulsiveforce = 2.0;
+    sep = 5;
+    smoothing = "spring";
+    {
+	node[margin=0 color="#222222" penwidth=2.0 shape=circle style=filled fontname=serif]
+	0 [label="Left0" fillcolor="#fc8d62" ];
+	1 [label="Left1" fillcolor="#fc8d62" ];
+	2 [label="Left2" fillcolor="#fc8d62" ];
+	3 [label="Left3" fillcolor="#fc8d62" ];
+	4 [label="Right0" fillcolor="#8da0cb" ];
+	5 [label="Right1" fillcolor="#8da0cb" ];
+	6 [label="Right2" fillcolor="#8da0cb" ];
+	7 [label="Right3" fillcolor="#8da0cb" ];
+	8 [label="Up0" fillcolor="#e78ac3" ];
+	9 [label="Up1" fillcolor="#e78ac3" ];
+	10 [label="Up2" fillcolor="#e78ac3" ];
+	11 [label="Up3" fillcolor="#e78ac3" ];
+	12 [label="Down0" fillcolor="#a6d854" ];
+	13 [label="Down1" fillcolor="#a6d854" ];
+	14 [label="Down2" fillcolor="#a6d854" ];
+	15 [label="Down3" fillcolor="#a6d854" ];
+	16 [label="Take0" fillcolor="#ffd92f" ];
+	17 [label="Goal" fillcolor="#e5c494" ];
+	18 [label="Start" fillcolor="#b3b3b3" ];
+}
+	 edge[style="solid" penwidth=2.0 colorscheme=spectral11]	18 -> 4 [color="#b3b3b3" ];
+	18 -> 12 [color="#b3b3b3" ];
+	0 -> 5 [color="#fc8d62" ];
+	0 -> 13 [color="#fc8d62" ];
+	1 -> 6 [color="#fc8d62" ];
+	1 -> 9 [color="#fc8d62" ];
+	2 -> 7 [color="#fc8d62" ];
+	2 -> 8 [color="#fc8d62" ];
+	3 -> 4 [color="#fc8d62" ];
+	3 -> 12 [color="#fc8d62" ];
+	4 -> 3 [color="#8da0cb" ];
+	4 -> 15 [color="#8da0cb" ];
+	4 -> 16 [color="#8da0cb" ];
+	5 -> 0 [color="#8da0cb" ];
+	5 -> 14 [color="#8da0cb" ];
+	6 -> 1 [color="#8da0cb" ];
+	6 -> 10 [color="#8da0cb" ];
+	6 -> 17 [color="#8da0cb" ];
+	7 -> 2 [color="#8da0cb" ];
+	7 -> 11 [color="#8da0cb" ];
+	7 -> 15 [color="#8da0cb" ];
+	8 -> 4 [color="#e78ac3" ];
+	8 -> 12 [color="#e78ac3" ];
+	9 -> 5 [color="#e78ac3" ];
+	9 -> 13 [color="#e78ac3" ];
+	10 -> 0 [color="#e78ac3" ];
+	10 -> 14 [color="#e78ac3" ];
+	11 -> 3 [color="#e78ac3" ];
+	11 -> 15 [color="#e78ac3" ];
+	11 -> 16 [color="#e78ac3" ];
+	12 -> 7 [color="#a6d854" ];
+	12 -> 8 [color="#a6d854" ];
+	13 -> 6 [color="#a6d854" ];
+	13 -> 9 [color="#a6d854" ];
+	14 -> 1 [color="#a6d854" ];
+	14 -> 10 [color="#a6d854" ];
+	14 -> 17 [color="#a6d854" ];
+	15 -> 2 [color="#a6d854" ];
+	15 -> 11 [color="#a6d854" ];
+	15 -> 15 [color="#a6d854" ];
+	16 -> 0 [color="#ffd92f" ];
+	16 -> 14 [color="#ffd92f" ];
+	17 -> 1 [color="#e5c494" ];
+	17 -> 10 [color="#e5c494" ];
+	17 -> 17 [color="#e5c494" ];
+}
