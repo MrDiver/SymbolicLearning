@@ -30,8 +30,10 @@ class Playroom:
         self.game: MiniGame = MiniGame()
         self.start_state: LowLevelState = self.get_state()
         tmp = [(0, 300), (0, 300)]
-        for i in self.game.get_key_states():
+        for _ in self.game.get_key_states():
             tmp.append((0, 1))
+        self.key_end_index = len(tmp)
+
         self.state_bounds = StateBounds(tmp)
 
     def get_state(self: Self) -> LowLevelState:
@@ -43,9 +45,12 @@ class Playroom:
         Returns:
             LowLevelState: the current low-level state of the internal MiniGame
         """
-        player_pos = np.array(self.game.player.get_position())
-        key_states = np.array(self.game.get_key_states())
-        current_state = np.append(player_pos, key_states).flatten()
+        current_state = []
+        for val in self.game.player.get_position():
+            current_state.append(val)
+        for val in self.game.get_key_states():
+            current_state.append(val)
+        current_state = np.array(current_state).flatten()
         # print("Getting", current_state)
         return current_state
 
@@ -57,7 +62,7 @@ class Playroom:
         """
         # print("Setting", state)
         self.game.player.set_position(state[0], state[1])
-        self.game.set_key_states(state[2:])
+        self.game.set_key_states(state[2 : self.key_end_index])
 
     def reset(self: Self) -> LowLevelState:
         """Resets the internal MiniGame returns the new state

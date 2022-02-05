@@ -33,6 +33,8 @@ class Player(pg.sprite.Sprite):
         self.key_sprites = None
         self.step_size = rng.randint(1, 3)
 
+        self.useless = 0
+
     def _create_surface(self) -> pg.SurfaceType:
         tileset = pg.image.load("res/tiles.png")
         surf: pg.SurfaceType = pg.Surface((16, 16))
@@ -46,7 +48,7 @@ class Player(pg.sprite.Sprite):
     def collide(self, dir: Direction) -> bool:
         if dir is Direction.LEFT:
             self.rect.centerx = self.pos.x - self.step_size
-            # self.rect.centery = self.pos.y - self.step_size
+            self.rect.centery = self.pos.y - self.step_size
         elif dir is Direction.RIGHT:
             self.rect.centerx = self.pos.x + self.step_size
         elif dir is Direction.UP:
@@ -60,21 +62,12 @@ class Player(pg.sprite.Sprite):
         self.rect.center = self.pos
         return len(collided) > 0
 
-    def collide_key(self) -> bool:
-        collided = pg.sprite.spritecollide(Collider(self.rect), self.key_sprites, False)
-        return len(collided) > 0
-
-    def pick_key(self) -> bool:
-        collided = pg.sprite.spritecollide(Collider(self.rect), self.key_sprites, True)
-        if len(collided) > 0:
-            return True
-        return False
-
     def move(self, dir: Direction) -> bool:
         if not self.collide(dir):
             if dir is Direction.LEFT:
                 self.pos.x -= self.step_size
-                # self.pos.y -= self.step_size
+                self.useless = 1
+                self.pos.y -= self.step_size
             elif dir is Direction.RIGHT:
                 self.pos.x += self.step_size
             elif dir is Direction.UP:
@@ -87,8 +80,18 @@ class Player(pg.sprite.Sprite):
             return True
         return False
 
+    def collide_key(self) -> bool:
+        collided = pg.sprite.spritecollide(Collider(self.rect), self.key_sprites, False)
+        return len(collided) > 0
+
+    def pick_key(self) -> bool:
+        collided = pg.sprite.spritecollide(Collider(self.rect), self.key_sprites, True)
+        if len(collided) > 0:
+            return True
+        return False
+
     def _update_step(self):
-        self.step_size = rng.randint(1, 10)
+        self.step_size = rng.randint(1, 20)
 
     def set_position(self, x, y):
         self.pos.x = x
@@ -258,7 +261,7 @@ class MiniGame:
                 states.append(0)
             else:
                 states.append(1)
-
+        states.append(self.player.useless)
         return states
 
     def set_key_states(self, states: List[int]):
@@ -268,6 +271,7 @@ class MiniGame:
                 self.keys.add(key)
                 self.interactibles.add(key)
                 self.sprites.add(key)
+        self.player.useless = states[-1]
 
     def reset(self):
         self.set_key_states([0] * len(self.key_list))

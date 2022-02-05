@@ -1,3 +1,4 @@
+import enum
 import time
 from collections import namedtuple
 from typing import Any, Callable, List
@@ -12,7 +13,7 @@ from sklearn.svm import SVC
 # trunk-ignore(mypy/attr-defined)
 from typing_extensions import Self, TypeAlias
 
-from symbolic.tools import Projection, StateBounds, get_color
+from symbolic.tools import Projection, StateBounds, get_color, power_set
 
 LowLevelState: TypeAlias = nptype.NDArray[np.floating]
 LowLevelStates: TypeAlias = nptype.NDArray[np.floating]
@@ -121,11 +122,10 @@ class Option:
         return True
 
     def mask_bool(self, eps=1e-3) -> nptype.NDArray[np.bool8]:
-        if len(self.initiation_set) > 0:
-            modified = np.zeros_like(self.initiation_set[0]) != 0
-            for t in self.transitions:
-                modified |= np.abs(t.start - t.dest) > eps
-            return modified
+        modified = np.zeros(len(self.state_bounds.bounds)) != 0
+        for t in self.transitions:
+            modified |= np.abs(t.start - t.dest) > eps
+        return modified
 
     def mask(self, eps=1e-3) -> nptype.NDArray[np.int64]:
         modified = self.mask_bool(eps)
@@ -192,6 +192,35 @@ class SubgoalOption(Option):
 
     # def eff_probability(states):
     #     pass
+
+
+class PropositionSymbol:
+    def __init__(self, name: str, grounding_set: Projection or nptype.NDArray) -> None:
+        self.name = name
+        self.grounding_set: Projection = Projection.as_projection(grounding_set)
+
+    def p_test(self, states: LowLevelStates) -> bool:
+        return np.array_equal(
+            np.unique(states, axis=0), self.grounding_set.intersect(states).to_array()
+        )
+
+    def p_and(self, other: Self):
+        return PropositionSymbol(
+            f"({self.name} & {other.name})",
+            (lambda x: self.p_test(x) and other.p_test(x)),
+        )
+
+    def p_or(self, other: Self):
+        return PropositionSymbol(
+            f"({self.name} | {other.name})",
+            (lambda x: self.p_test(x) or other.p_test(x)),
+        )
+
+    def p_not(self):
+        return PropositionSymbol(f"not_{self.name}", (lambda x: not self.p_test(x)))
+
+    def p_null(self) -> bool:
+        return len(self.grounding_set.states) == 0
 
 
 def partition_options(options: List[Option]) -> List[SubgoalOption]:
@@ -335,13 +364,48 @@ class Factor:
     def is_independent(self, option: Option, factors: List[Self]) -> bool:
         states = option.effect()
         other_ids = [i for f in factors for i in f.indices if i not in self.indices]
-        partitioned_states = (
-            Projection(states, self.indices, option.state_bounds)
-            .intersect(Projection(states, other_ids, option.state_bounds))
-            .to_array()
-        )
+        inside = Projection(states, self.indices, option.state_bounds)
+        outside = Projection(states, other_ids, option.state_bounds)
+        partitioned_states = inside.intersect(outside)
+        # print("Inside ID", inside.ids, len(inside.states))
+        # print("Outside ID", outside.ids, len(outside.states))
+        # print("Part ID", partitioned_states.ids)
+
+        import matplotlib.pyplot as plt
+        import pandas as pd
+
+        length_states = len(option.state_bounds.bounds)
+
+        def plot_stuff():
+            fig, axs = plt.subplots(length_states, length_states, figsize=(12, 12))
+            df_inside = pd.DataFrame(inside.to_array())
+            df_outside = pd.DataFrame(outside.to_array())
+            df_intersect = pd.DataFrame(partitioned_states.to_array())
+            df_eff = pd.DataFrame(states)
+            for i, ax_y in enumerate(axs):
+                for j, ax in enumerate(ax_y):
+                    df_inside.plot.scatter(
+                        x=i, y=j, ax=ax, c="orange", alpha=0.2, label="inside"
+                    )
+                    df_outside.plot.scatter(
+                        x=i, y=j, ax=ax, c="blue", alpha=0.2, label="outside"
+                    )
+                    df_intersect.plot.scatter(
+                        x=i, y=j, ax=ax, c="green", alpha=0.2, label="intersect"
+                    )
+                    df_eff.plot.scatter(
+                        x=i, y=j, ax=ax, c="red", alpha=0.2, label="effect"
+                    )
+            plt.legend()
+            plt.show()
+
+        # plot_stuff()
+        # print(
+        #     len(np.unique(states, axis=0)),
+        #     len(np.unique(partitioned_states.to_array(), axis=0)),
+        # )
         return np.array_equal(
-            np.unique(states, axis=0), np.unique(partitioned_states, axis=0)
+            np.unique(states, axis=0), np.unique(partitioned_states.to_array(), axis=0)
         )
 
 
@@ -382,6 +446,63 @@ def get_factors_for_option(option: Option, factors: List[Factor]) -> List[Factor
             tmp.append(f)
 
     return tmp
+
+
+def calculate_propositions(options: List[Option]) -> List[PropositionSymbol]:
+    print("Calculate Propositions")
+    propositions = []
+    factors = calculate_factors(options)
+    for option in options:
+        factors_oi = get_factors_for_option(option, factors)
+        independent_factors = []
+        independent_ids = []
+        remaining_factors = []
+        for factor in factors_oi:
+            if factor.is_independent(option, factors_oi):
+                independent_factors.append(factor)
+                independent_ids = np.append(independent_ids, factor.indices)
+            else:
+                remaining_factors.append(factor)
+        independent_ids = np.asarray(independent_ids, dtype=np.int64)
+        print("Independent", independent_factors)
+        print("Dependent", remaining_factors)
+
+        effect_remaining = Projection(
+            option.effect(), independent_ids, option.state_bounds
+        )
+
+        for factor in independent_factors:
+            out_ids = []
+            for other_factor in factors_oi:
+                if other_factor != factor:
+                    out_ids = np.append(out_ids, other_factor.indices)
+            out_ids = np.asarray(out_ids, dtype=np.int64)
+            print(
+                f"Creating P(E({option.name}),{out_ids}) for independent Factor {factor}"
+            )
+            proposition = PropositionSymbol(
+                f"P(E({option.name}),{out_ids})",
+                Projection(option.effect(), out_ids, option.state_bounds),
+            )
+            propositions.append(proposition)
+
+        for factor_set in power_set(remaining_factors):
+            out_ids = []
+            for factor in factor_set:
+                out_ids = np.append(out_ids, factor.indices)
+            out_ids = np.asarray(out_ids, dtype=np.int64)
+            print(
+                f"Creating P(E_r({option.name}),{out_ids}) for independent Factor {factor_set}"
+            )
+            proposition = PropositionSymbol(
+                f"P(E_r({option.name}),{out_ids})", effect_remaining.project(out_ids)
+            )
+            propositions.append(proposition)
+    return propositions
+
+
+# TODO Calculate operator description
+# TODO abstract subgoal partitioning
 
 
 class Node:
@@ -501,41 +622,6 @@ def generate_planning_graph(
                 edge_color[e] = get_color(s1.option.index + 1)
 
     return g
-
-
-class PropositionSymbol:
-    def __init__(self, name: str, test: StateTest) -> None:
-        self.name = name
-        self.test = test
-        self.low_level_states: List[LowLevelState] = []
-
-    def p_test(self, state: LowLevelState):
-        res = self.test(state)
-        if res:
-            self.low_level_states.append(state)
-        return res
-
-    def p_and(self, other):
-        return __make_symbol(
-            "(" + self.name + "&" + other.name + ")",
-            (lambda x: self.test(x) and other.test(x)),
-        )
-
-    def p_or(self, other):
-        return __make_symbol(
-            "(" + self.name + "|" + other.name + ")",
-            (lambda x: self.test(x) or other.test(x)),
-        )
-
-    def p_not(self):
-        return __make_symbol("not_" + self.name, (lambda x: not self.test(x)))
-
-    def p_null(self) -> bool:
-        return len(self.low_level_states) == 0
-
-
-def __make_symbol(name: str, test: StateTest) -> PropositionSymbol:
-    return PropositionSymbol(name, test)
 
 
 class Plan:

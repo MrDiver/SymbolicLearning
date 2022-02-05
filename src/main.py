@@ -10,7 +10,9 @@ from symbolic.agent import Agent, Playroom, PlayroomAgent
 from symbolic.option_framework import (
     LowLevelState,
     Option,
+    PropositionSymbol,
     calculate_factors,
+    calculate_propositions,
     generate_planning_graph,
     get_factors_for_option,
     partition_options,
@@ -87,16 +89,20 @@ def main():
     # check_subgoal_conditions(agent.options)
     # check_subgoal_conditions(subgoals)
 
-    factors = calculate_factors(subgoals)
-    for f in factors:
-        print(f)
+    # factors = calculate_factors(agent.options)
+    # for f in factors:
+    #     print(f)
 
-    for o in subgoals:
-        print(o.name)
-        factors_o = get_factors_for_option(o, factors)
-        for f in factors_o:
-            independent = f.is_independent(o, factors_o)
-            print("\t", f.indices, independent)
+    # for o in agent.options:
+    #     print(o.name)
+    #     factors_o = get_factors_for_option(o, factors)
+    #     for f in factors_o:
+    #         independent = f.is_independent(o, factors_o)
+    #         print("\t", f.indices, independent)
+
+    propositions: List[PropositionSymbol] = calculate_propositions(agent.options)
+    for prop in propositions:
+        print(prop.name)
 
     # plot_options(agent.options)
     # graph = generate_planning_graph([start_state], partition_options(agent.options))

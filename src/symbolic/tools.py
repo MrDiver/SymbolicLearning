@@ -127,7 +127,7 @@ def power_set(original_set: List[Any], with_empty: bool = False) -> List[List[An
          List[List[Any]]: power set of the given set
     """
     power_set_size = pow(2, len(original_set))
-    print(power_set_size)
+    # print(power_set_size)
     set_size = len(original_set)
     sets = []
     for counter in range(0 if with_empty else 1, power_set_size):
@@ -189,6 +189,10 @@ class Projection:
 
         self.states = np.unique(self.states, axis=0)
         # print(self.states)
+
+    def project(self, ids: nptype.NDArray[np.integer]) -> Self:
+        new_ids = np.append(self.ids, ids)
+        return Projection(self.states, new_ids, self.state_bounds)
 
     def intersect(self, other: Self) -> Self:
         other = Projection.as_projection(other)
