@@ -363,7 +363,7 @@ class MiniGame:
         pg.display.update()
         self.fps.tick()
 
-    def destroy(self):
+    def destroy(self) -> None:
         pg.display.quit()
 
     def screenshot(self, name: str):

@@ -39,7 +39,7 @@ def check_subgoal_conditions(options: List[Option]) -> None:
     print(f"Is Strong Subgoal {strongs}")
 
 
-def main():
+def main() -> None:
     """
     Main function for testing
     """
@@ -50,7 +50,9 @@ def main():
     print("MAIN")
 
     # currently not working
-    def recurse_options(state: LowLevelState, options: List[Option], depth: int):
+    def recurse_options(
+        state: LowLevelState, options: List[Option], depth: int
+    ) -> None:
         if depth <= 0:
             return
         if agent.is_done():
@@ -64,7 +66,7 @@ def main():
 
             # pr.draw_state(res.state)
 
-    def random_options(state: LowLevelState, options: List[Option], depth: int):
+    def random_options(state: LowLevelState, options: List[Option], depth: int) -> None:
         i = 0
         while i < depth:
             res = options[rng.randint(0, len(options) - 1)].execute(

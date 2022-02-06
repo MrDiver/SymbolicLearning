@@ -10,7 +10,7 @@ import numpy.typing as nptype
 # trunk-ignore(mypy/attr-defined)
 from typing_extensions import Self
 
-from symbolic.game import Direction, MiniGame, Player
+from game.treasure_game import Direction, MiniGame, Player
 from symbolic.option_framework import (
     LowLevelState,
     LowLevelStates,
@@ -26,7 +26,7 @@ from symbolic.tools import StateBounds
 class Playroom:
     """The playroom class is a wrapper around MiniGame which holds the environment for testing"""
 
-    def __init__(self: Self) -> None:
+    def __init__(self) -> None:
         self.game: MiniGame = MiniGame()
         self.start_state: LowLevelState = self.get_state()
         tmp = [(0, 300), (0, 300)]
@@ -36,7 +36,7 @@ class Playroom:
 
         self.state_bounds = StateBounds(tmp)
 
-    def get_state(self: Self) -> LowLevelState:
+    def get_state(self) -> LowLevelState:
         """Returns the current state of the game
 
         Args:
@@ -54,7 +54,7 @@ class Playroom:
         # print("Getting", current_state)
         return current_state
 
-    def set_state(self: Self, state: LowLevelState) -> None:
+    def set_state(self, state: LowLevelState) -> None:
         """Sets the low-level state
 
         Args:
@@ -64,7 +64,7 @@ class Playroom:
         self.game.player.set_position(state[0], state[1])
         self.game.set_key_states(state[2 : self.key_end_index])
 
-    def reset(self: Self) -> LowLevelState:
+    def reset(self) -> LowLevelState:
         """Resets the internal MiniGame returns the new state
 
         Returns:
@@ -75,7 +75,7 @@ class Playroom:
         return self.start_state
 
     def execute_no_change(
-        self: Self, state: LowLevelState, func: Callable[[], Any]
+        self, state: LowLevelState, func: Callable[[], Any]
     ) -> LowLevelState:
         """Executes a function f in the environment without changing the internal state
             and returns the new state
@@ -95,7 +95,7 @@ class Playroom:
         return new_state
 
     def execute_no_change_return(
-        self: Self, state: LowLevelState, func: Callable[[], Any]
+        self, state: LowLevelState, func: Callable[[], Any]
     ) -> Any:
         """Executes a function f in the environment without changing the internal state
             and returns the value that is returned by f
@@ -113,11 +113,11 @@ class Playroom:
         self.set_state(old_state)
         return res
 
-    def draw(self: Self) -> None:
+    def draw(self) -> None:
         """Draw the current state of the internal game which also updates the screen"""
         self.game.draw()
 
-    def draw_state(self: Self, state: LowLevelState) -> None:
+    def draw_state(self, state: LowLevelState) -> None:
         """Draw the given state without changing the internal state and update the screen
 
         Args:
@@ -133,7 +133,7 @@ class Playroom:
         self.game.overlay_background()
 
     def overlay_state(
-        self: Self,
+        self,
         state: LowLevelState,
         color: Tuple[int, int, int] = (255, 0, 0),
         alpha: int = 10,
@@ -156,7 +156,7 @@ class Playroom:
         self.set_state(old_state)
 
     def overlay_transition(
-        self: Self,
+        self,
         transition: OptionTransition,
         start_color: Tuple[int, int, int] = (255, 0, 0),
         end_color: Tuple[int, int, int] = (0, 255, 0),
@@ -182,7 +182,7 @@ class Playroom:
         )
 
     def overlay_states(
-        self: Self,
+        self,
         states: LowLevelStates,
         color: Tuple[int, int, int],
         ui_offset: int = 0,

@@ -1,7 +1,6 @@
-import enum
 import time
 from collections import namedtuple
-from typing import Any, Callable, List
+from typing import Callable, List, Tuple
 
 import numpy as np
 import numpy.typing as nptype
@@ -11,18 +10,18 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 
 # trunk-ignore(mypy/attr-defined)
-from typing_extensions import Self, TypeAlias
+from typing_extensions import Self
 
+from symbolic.base import ProbOptionTransition
 from symbolic.tools import Projection, StateBounds, get_color, power_set
-
-LowLevelState: TypeAlias = nptype.NDArray[np.floating]
-LowLevelStates: TypeAlias = nptype.NDArray[np.floating]
-SymbolicState: TypeAlias = nptype.NDArray[np.bool8]
-StateTransform = Callable[[LowLevelState], LowLevelState]
-StateTest = Callable[[LowLevelStates], nptype.NDArray[np.bool8]]
-StateProbability = Callable[[LowLevelStates], nptype.NDArray[np.floating]]
-StateConsumer = Callable[[LowLevelState], Any]
-
+from symbolic.typing import (
+    LowLevelState,
+    LowLevelStates,
+    StateConsumer,
+    StateProbability,
+    StateTest,
+    StateTransform,
+)
 
 """[summary]
     state - refers to the new state after the option is executed
@@ -31,6 +30,146 @@ StateConsumer = Callable[[LowLevelState], Any]
 """
 OptionExecuteReturn = namedtuple("OptionExecuteReturn", ["state", "executed", "time"])
 OptionTransition = namedtuple("OptionTransition", ["start", "dest", "states"])
+
+
+class ProjectionOption:
+    count = 0
+
+    def __init__(
+        self,
+        name: str,
+        policy: StateTransform,
+        init_test: StateTest,
+        termination: StateConsumer,
+        state_bounds: StateBounds,
+        pool,
+    ) -> None:
+        self.index = ProjectionOption.count
+        ProjectionOption.count += 1
+        self.name: str = name
+        self._init_test: StateTest = init_test
+        self._policy: StateTransform = policy
+        self._termination: StateConsumer = termination
+        self.state_bounds: StateBounds = state_bounds
+        self.pool = pool
+
+        self.transitions: List[ProbOptionTransition] = []
+        self.initation_data: List[Tuple[LowLevelState, bool]] = []
+        self.init_projection = Projection([], [], state_bounds)
+        self.eff_projection = Projection([], [], state_bounds)
+
+    def _add_transition(
+        self,
+        start: LowLevelState,
+        dest: LowLevelState,
+        states: LowLevelStates,
+        prob: float,
+    ):
+        self.transitions.append(ProbOptionTransition(start, dest, states, prob))
+
+    def _add_init_state(self, state: LowLevelState) -> None:
+        self.init_projection.add([state])
+
+    def _add_effect_state(self, state: LowLevelState) -> None:
+        self.eff_projection.add([state])
+
+    def _add_init_sample(self, state: LowLevelState, in_init: bool) -> None:
+        self.initation_data.append(state, in_init)
+
+    def effect(self) -> Projection:
+        return self.eff_projection
+
+    def initiation(self) -> Projection:
+        return self.init_projection
+
+    def remainder(self, states: LowLevelStates) -> Projection:
+        return Projection(states, self.effect_mask(), self.state_bounds)
+
+    # TODO
+    def weak_subgoal_condition(self) -> bool:
+        pass
+
+    # TODO
+    def strong_subgoal_condition(self) -> bool:
+        pass
+
+    def effect_mask_bool(self, eps=1e-3) -> nptype.NDArray[np.bool8]:
+        modified = np.zeros(len(self.state_bounds.bounds)) != 0
+        for t in self.transitions:
+            modified |= np.abs(t.start - t.dest) > eps
+        return modified
+
+    def effect_mask(self, eps=1e-3) -> nptype.NDArray[np.int64]:
+        modified = self.effect_mask_bool(eps)
+        return np.arange(len(modified), dtype=np.int64)[modified]
+
+    def empty(self) -> bool:
+        return self.init_projection.is_empty() or self.eff_projection.is_empty()
+
+    def init_test(self, states: LowLevelStates) -> nptype.NDArray[np.floating]:
+        return self._init_test(states)
+
+    def termination_test(self, state: LowLevelState) -> float:
+        return self._termination(state)
+
+    def execute_policy(self, state: LowLevelState) -> LowLevelState:
+        return self._policy(state)
+
+    def execute(
+        self, state: LowLevelState, update_callback: Callable[[LowLevelState], None]
+    ) -> OptionExecuteReturn:
+        # print(state)
+        if not self.init_test([state])[0] > 0:
+            self._add_init_sample(state, False)
+            return OptionExecuteReturn(state, False, 0)
+        terminated: bool = False
+        start_state: LowLevelState = state
+        start_time: float = time.time()
+        intermediate_states = []
+        while not terminated:
+            intermediate_states.append(state)
+            state: LowLevelState = self.execute_policy(state)
+            terminated: bool = self.termination_test(state) > 0
+            update_callback(state)
+
+        self._add_transition(start_state, state, intermediate_states, 0)
+
+        self._add_init_sample(start_state, True)
+        self._add_init_state(start_state)
+
+        self._add_effect_state(state)
+        self._add_init_sample(state, self.init_test([state])[0] > 0)
+
+        return OptionExecuteReturn(state, True, time.time() - start_time)
+
+    def __str__(self):
+        return self.name
+
+    def __repr__(self):
+        return self.name
+
+
+class OptionPool:
+    def __init__(self, name: str) -> None:
+        self.name: str = name
+        self.pool: List[ProjectionOption] = []
+
+    def add_option(
+        self,
+        name: str,
+        policy: StateTransform,
+        init_test: StateTest,
+        termination: StateConsumer,
+        state_bounds: StateBounds,
+    ) -> ProjectionOption:
+        option: ProjectionOption = ProjectionOption(
+            name, policy, init_test, termination, state_bounds, self
+        )
+        self.pool.append(option)
+        return option
+
+    def get_options(self) -> List[ProjectionOption]:
+        return self.pool
 
 
 class Option:
@@ -204,23 +343,23 @@ class PropositionSymbol:
             np.unique(states, axis=0), self.grounding_set.intersect(states).to_array()
         )
 
-    def p_and(self, other: Self):
-        return PropositionSymbol(
-            f"({self.name} & {other.name})",
-            (lambda x: self.p_test(x) and other.p_test(x)),
-        )
+    # def p_and(self, other: Self):
+    #     return PropositionSymbol(
+    #         f"({self.name} & {other.name})",
+    #         self.grounding_set.intersect(other.grounding_set),
+    #     )
 
-    def p_or(self, other: Self):
-        return PropositionSymbol(
-            f"({self.name} | {other.name})",
-            (lambda x: self.p_test(x) or other.p_test(x)),
-        )
+    # def p_or(self, other: Self):
+    #     return PropositionSymbol(
+    #         f"({self.name} | {other.name})",
+    #         (lambda x: self.p_test(x) or other.p_test(x)),
+    #     )
 
-    def p_not(self):
-        return PropositionSymbol(f"not_{self.name}", (lambda x: not self.p_test(x)))
+    # def p_not(self):
+    #     return PropositionSymbol(f"not_{self.name}", (lambda x: not self.p_test(x)))
 
-    def p_null(self) -> bool:
-        return len(self.grounding_set.states) == 0
+    # def p_null(self) -> bool:
+    #     return len(self.grounding_set.states) == 0
 
 
 def partition_options(options: List[Option]) -> List[SubgoalOption]:
