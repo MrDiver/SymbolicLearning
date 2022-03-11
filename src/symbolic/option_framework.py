@@ -210,10 +210,12 @@ class Option:
         return np.array(self.initiation_set)
 
     def remainder(self, states: LowLevelStates, resolution=10) -> LowLevelStates:
-        return Projection(states, self.mask(), self.state_bounds).to_array(resolution)
+        return Projection.new(states, self.mask(), self.state_bounds).to_array(
+            resolution
+        )
 
     def remainder_projection(self, states: LowLevelStates) -> Projection:
-        return Projection(states, self.mask(), self.state_bounds)
+        return Projection.new(states, self.mask(), self.state_bounds)
 
     # Not a complete mathematical check but good enough
     def weak_subgoal_condition(self, options: List[Self]) -> bool:
@@ -503,8 +505,8 @@ class Factor:
     def is_independent(self, option: Option, factors: List[Self]) -> bool:
         states = option.effect()
         other_ids = [i for f in factors for i in f.indices if i not in self.indices]
-        inside = Projection(states, self.indices, option.state_bounds)
-        outside = Projection(states, other_ids, option.state_bounds)
+        inside = Projection.new(states, self.indices, option.state_bounds)
+        outside = Projection.new(states, other_ids, option.state_bounds)
         partitioned_states = inside.intersect(outside)
         # print("Inside ID", inside.ids, len(inside.states))
         # print("Outside ID", outside.ids, len(outside.states))
@@ -606,7 +608,7 @@ def calculate_propositions(options: List[Option]) -> List[PropositionSymbol]:
         print("Independent", independent_factors)
         print("Dependent", remaining_factors)
 
-        effect_remaining = Projection(
+        effect_remaining = Projection.new(
             option.effect(), independent_ids, option.state_bounds
         )
 
@@ -621,7 +623,7 @@ def calculate_propositions(options: List[Option]) -> List[PropositionSymbol]:
             )
             proposition = PropositionSymbol(
                 f"P(E({option.name}),{out_ids})",
-                Projection(option.effect(), out_ids, option.state_bounds),
+                Projection.new(option.effect(), out_ids, option.state_bounds),
             )
             propositions.append(proposition)
 

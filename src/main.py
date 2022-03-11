@@ -82,8 +82,11 @@ def main() -> None:
 
             i += 1
 
+    playroom.draw()
+    playroom.save_image("StartingStateThingy.png")
+
     random_options(state, agent.options, 1000)
-    # plot_playroom(playroom, agent)
+    plot_playroom(playroom, agent)
 
     playroom.game.destroy()
 
@@ -107,8 +110,8 @@ def main() -> None:
         print(prop.name)
 
     # plot_options(agent.options)
-    # graph = generate_planning_graph([start_state], partition_options(agent.options))
-    # plot_planning_graph(graph)
+    graph = generate_planning_graph([start_state], partition_options(agent.options))
+    plot_planning_graph(graph)
 
 
 if __name__ == "__main__":

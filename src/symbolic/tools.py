@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Tuple, Union, cast, overload
+from typing import Any, Dict, List, Tuple, Union, cast
 
 import matplotlib  # type:ignore
 import matplotlib.pyplot as plt  # type:ignore
@@ -83,7 +83,11 @@ def combine_images(name: str, paths: List[str]) -> None:
 
     length = len(paths)
 
-    idx_x, idx_y = calculate_size(length)
+    idx_y, idx_x = calculate_size(length)
+    if idx_y > idx_x:
+        tmp = idx_x
+        idx_x = idx_y
+        idx_y = tmp
 
     images = [pg.image.load(path) for path in paths]
     img_width, img_height = cast(

@@ -3,10 +3,10 @@ channels:
   - defaults
 dependencies:
   - pip
-  - numpy
   - pandas
   - matplotlib
   - scikit-learn
   - pip:
       - pygame==2.1.2
+      - numpy==1.22.2
       - typing_extensions==4.0.1
